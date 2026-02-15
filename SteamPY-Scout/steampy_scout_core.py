@@ -3,7 +3,7 @@ import os
 from playwright.async_api import async_playwright
 
 class SteamPyScout:
-    def __init__(self, headless=False):
+    def __init__(self, headless=True):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         self.user_data_dir = os.path.join(current_dir, "steampy_data")
         self.headless = headless
@@ -62,7 +62,7 @@ class SteamPyScout:
 
 # --- 使用示例（你可以直接运行这个脚本进行最后的确认） ---
 async def main():
-    scout = SteamPyScout(headless=False)
+    scout = SteamPyScout(headless=True)
     page = await scout.start()
     
     if page:

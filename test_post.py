@@ -8,7 +8,7 @@ async def run_listing_test():
         
         context = await p.chromium.launch_persistent_context(
             user_data_dir,
-            headless=False,
+            headless=True,
             args=["--disable-blink-features=AutomationControlled", "--start-maximized"]
         )
         

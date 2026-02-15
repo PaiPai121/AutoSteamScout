@@ -11,14 +11,14 @@ async def save_sonkwo_session_universal():
         # 2. 启动持久化上下文，全平台通用参数
         context = await p.chromium.launch_persistent_context(
             user_data_dir,
-            headless=False,
+            headless=True,
             # 禁用自动化控制标记，增加全平台登录成功率
             args=["--disable-blink-features=AutomationControlled"]
         )
         
         page = context.pages[0] if context.pages else await context.new_page()
         print("🌐 正在打开杉果登录页面...")
-        await page.goto("https://www.sonkwo.cn/sign_in", timeout=60000)
+        await page.goto("https://www.sonkwo.cn/sign_in", timeout=6000000)
 
         try:
             # 3. 切换至手机验证码登录 (通用 ID 和 Class 定位)

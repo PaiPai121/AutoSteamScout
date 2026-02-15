@@ -348,5 +348,5 @@ class SonkwoCNMonitor(SonkwoScout):
             print(f"🚨 跳转异常: {e}")
 
 if __name__ == "__main__":
-    monitor = SonkwoCNMonitor(headless=False)
+    monitor = SonkwoCNMonitor(headless=True)
     asyncio.run(monitor.run_sonkwo())

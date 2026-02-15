@@ -545,5 +545,5 @@ class SteamPyMonitor(SteamPyScout):
             return False
         
 if __name__ == "__main__":
-    commander = SteamPyMonitor(headless=False)
+    commander = SteamPyMonitor(headless=True)
     asyncio.run(commander.run_commander())

@@ -10,12 +10,12 @@ async def save_steampy_phone_login_interactive():
         # 1. 启动持久化上下文
         context = await p.chromium.launch_persistent_context(
             user_data_dir,
-            headless=False,  # 强制 Headless 模式
+            headless=True,  # 强制 Headless 模式
             args=["--disable-blink-features=AutomationControlled"]
         )
         
         page = context.pages[0] if context.pages else await context.new_page()
-        page.set_default_timeout(600000)
+        page.set_default_timeout(6000000)
         
         print("🌐 [Headless] 正在进入 SteamPy 手机号登录流程...")
         await page.goto("https://steampy.com/login", wait_until="domcontentloaded")

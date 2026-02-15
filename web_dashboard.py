@@ -1,6 +1,8 @@
 import uvicorn
-from fastapi import FastAPI
+# 修改后
+from fastapi import FastAPI, Request, Response  # 加上 Request
 from fastapi.responses import HTMLResponse
+import json # 顺便确保 json 也导入了，因为后面解析飞书数据要用到
 import asyncio
 import datetime
 import os
@@ -88,6 +90,10 @@ async def continuous_cruise():
             
             # 2. 任务主循环
             while True:
+                start_time = datetime.datetime.now()
+                match_count = 0  # 成功匹配数量
+                profit_count = 0 # 达到利润门槛数量
+                total_profit = 0.0 # 本轮潜在总利润
                 AGENT_STATE["current_mission"] = "全场折扣扫描中"
                 
                 # 获取杉果搜索结果（增加局部异常保护，防止单次抓取失败搞死全局）
@@ -157,7 +163,30 @@ async def continuous_cruise():
                     AGENT_STATE["scanned_count"] += 1
                     AGENT_STATE["last_update"] = log_entry["time"]
                     logger.info(f"📊 进度 [{AGENT_STATE['scanned_count']}]: {sk_name} -> {status_text}")
-
+                    if py_data and is_match:
+                        match_count += 1
+                        if net_profit >= global_commander.min_profit:
+                            profit_count += 1
+                            total_profit += net_profit
+                # 3. 🚨 重点：在这里插入简报发送逻辑 (for 循环结束后)
+                end_time = datetime.datetime.now()
+                duration = (end_time - start_time).seconds
+                
+                summary_report = (
+                    f"📊 【侦察母舰·巡航简报】\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"⏱ 扫描耗时: {duration}s\n"
+                    f"📦 扫描总量: {len(sk_results)} 件\n"
+                    f"✅ 成功对齐: {match_count} 件\n"
+                    f"🔥 盈利目标: {profit_count} 件\n"
+                    f"💰 潜在总剩余: ¥{total_profit:.2f}\n"
+                    f"📈 扫描进度: 100% (第 {AGENT_STATE['scanned_count']} 次扫描)\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"💤 引擎转入低功耗模式，预计 10 分钟后重启。"
+                )
+                
+                # 发送到飞书（不管有没有利润都发，让你知道它在动）
+                await global_commander.notifier.send_text(summary_report)
                 # 3. 冷却周期
                 AGENT_STATE["current_mission"] = "巡航完成，进入冷却"
                 AGENT_STATE["active_game"] = "无（待命）"
