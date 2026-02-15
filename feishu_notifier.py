@@ -1,0 +1,35 @@
+import requests
+import json
+
+class FeishuNotifier:
+    def __init__(self, webhook_url):
+        self.webhook_url = webhook_url
+
+    def send_arbitrage_report(self, games):
+        """发送富文本套利报告"""
+        post_data = {
+            "msg_type": "post",
+            "content": {
+                "post": {
+                    "zh_cn": {
+                        "title": "🛰️ 杉果 x SteamPy 套利侦察报告",
+                        "content": []
+                    }
+                }
+            }
+        }
+        
+        segments = []
+        for i, game in enumerate(games, 1):
+            segments.append([
+                {"tag": "text", "text": f"{i}. {game['title']}\n"},
+                {"tag": "text", "text": f"   💰 进货: ￥{game['sk_price']} | 出货: ￥{game['py_price']}\n"},
+                {"tag": "text", "text": f"   🔥 预期纯利: ￥{game['profit']:.2f}\n"},
+                {"tag": "a", "text": "🔗 点击进货", "href": game['url']},
+                {"tag": "text", "text": "\n------------------\n"}
+            ])
+        
+        post_data["content"]["post"]["zh_cn"]["content"] = segments
+        
+        response = requests.post(self.webhook_url, json=post_data)
+        return response.json()
