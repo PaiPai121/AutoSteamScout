@@ -16,16 +16,16 @@ from feishu_notifier import FeishuNotifier
 from ai_engine import ArbitrageAI  # 导入你的新大脑
 
 def get_search_query(raw_name):
-    """
-    侦察兵降噪逻辑：只删杂质，不砍名字。
-    确保中英文核心词完整进入搜索框。
-    """
-    # 剔除行业噪音词
-    garbage = r"(券后价|激活码|【.*】|\[.*\]|现货|秒发|CDKEY|Digital|数字版|Steam版|CN/HK|Global|全球版)"
+    # 1. 剔除噪音词
+    garbage = r"(券后价|秒杀价|激活码|【.*】|\[.*\]|现货|秒发|CDKEY|Digital|数字版|Steam版|CN/HK|Global|全球版|标准版|典藏版|最终版|周年纪念版|原罪学者|皇家版)"
     clean = re.sub(garbage, "", raw_name, flags=re.IGNORECASE).strip()
     
-    # 进一步清理多余的连字符或空格
-    clean = re.sub(r"\s+", " ", clean) 
+    # 2. 💡 重点：清除所有形式的括号及其内部的空内容
+    clean = re.sub(r"[\(\)（）\s]+$", "", clean) # 清除结尾的括号和空格
+    clean = re.sub(r"[\(\)（）]", " ", clean)     # 将中间的括号转为空格
+    
+    # 3. 深度清理多余空格
+    clean = " ".join(clean.split())
     return clean
 
 class ArbitrageCommander:
@@ -97,32 +97,29 @@ class ArbitrageCommander:
 
     async def process_arbitrage_item(self, sk_item, is_manual=False):
         """
-        全能加工中心：负责清洗、搜索、AI审计及利润核算
+        全能加工中心：负责清洗、搜索、AI 语义审计（含理由捕获）及利润核算
         """
         sk_name = sk_item.get('title', '未知商品')
         
-        # --- 1. 价格防弹处理 ---
+        # --- 1. 增强型价格防弹处理 ---
         raw_price_str = str(sk_item.get('price', '0'))
         try:
-            # 暴力提取数字和小数点，无视 '...' 或 '￥'
+            # 暴力提取数字和小数点，彻底解决 '...' 或 '券后价' 导致的崩溃
             clean_price_str = re.sub(r'[^\d.]', '', raw_price_str)
             sk_price = float(clean_price_str) if clean_price_str and clean_price_str != "." else 0.0
         except Exception:
             sk_price = 0.0
 
         if sk_price <= 0:
-            # 价格异常的商品不具备套利分析价值
-            return None
+            return None # 价格异常不具备分析价值
 
-        # --- 2. 搜索词降噪 (不缩词) ---
-        # 调用我们写在类外的 get_search_query 函数
+        # --- 2. 搜索词降噪（不缩词，调用类外定义的 get_search_query） ---
         search_keyword = get_search_query(sk_name)
 
         # --- 3. 跨平台侦察 (SteamPy 撞库) ---
         py_data = None
         async with self.lock:
             try:
-                # 拿着洗好的名字去 SteamPy 详情页抓价格
                 py_data = await self.steampy.get_game_market_price_with_name(search_keyword)
             except Exception as e:
                 print(f"🚨 SteamPy 搜索链路故障: {e}")
@@ -132,7 +129,7 @@ class ArbitrageCommander:
 
         py_price, py_match_name = py_data
 
-        # --- 4. AI 语义审计 (判定版本与实体) ---
+        # --- 4. AI 语义审计（判定结果 + 理由捕获） ---
         audit_prompt = f"""
         请对比以下两个游戏商品，判断它们是否为【同一个游戏】且【版本价值对等】。
         
@@ -140,44 +137,43 @@ class ArbitrageCommander:
         2. 变现端(市场): {py_match_name}
 
         【判定规则】:
-        - MATCH: 同款且版本一致，或进货版本更高（如进货豪华版，变现标准版）。
-        - VERSION_ERROR: 同款但进货版本低（如进货标准版，变现豪华版，会导致利润虚高）。
-        - ENTITY_ERROR: 根本不是同一个游戏（如《空洞骑士》vs《丝之歌》）。
+        - MATCH: 同款且版本一致，或进货版本更高。
+        - VERSION_ERROR: 同款但进货版本低（如标准版对标豪华版价）。
+        - ENTITY_ERROR: 根本不是同一个游戏。
 
-        仅输出一个单词: MATCH / VERSION_ERROR / ENTITY_ERROR
+        请严格按以下格式回复：
+        判定: [结果]
+        理由: [简短的中文理由]
         """
         
-        # 调用我们在 ai_engine 里修好的 quick_call
-        audit_result = self.ai.quick_call(audit_prompt)
+        # 直接调用底层接口获取原始文本，以便解析理由
+        raw_response = self.ai._call_with_retry(audit_prompt)
+        
+        audit_result = "ERROR"
+        audit_reason = "AI 响应解析失败"
+        
+        if raw_response:
+            # 提取判定词
+            res_match = re.search(r'判定:\s*(\w+)', raw_response, re.I)
+            audit_result = res_match.group(1).upper() if res_match else "ERROR"
+            # 提取理由
+            reason_match = re.search(r'理由:\s*(.*)', raw_response)
+            audit_reason = reason_match.group(1).strip() if reason_match else "未给出具体理由"
 
-        # --- 5. 结果核算与封装 ---
-        status_text, profit_str, current_roi = "🛑 审核未通过", "---", 0.0
-        reason = f"AI判定: {audit_result}"
-
+        # --- 5. 结果核算与状态分流 ---
+        status_text, profit_str, current_roi = "🛑 审核未通过", "---", "0%"
+        
         if audit_result == "MATCH":
-            # 这里的 0.97 是扣除 Steam 市场手续费后的约值
             net_profit = (py_price * 0.97) - sk_price
             profit_str = f"¥{net_profit:.2f}"
-            current_roi = (net_profit / sk_price * 100) if sk_price > 0 else 0
-            
-            if net_profit > self.min_profit:
-                status_text = "✅ 匹配成功"
-                reason = "语义对齐通过，利润达标"
-            else:
-                status_text = "📉 利润微薄"
-                reason = "版本对齐但利润过低"
-                
+            current_roi = f"{(net_profit / sk_price * 100):.1f}%" if sk_price > 0 else "0%"
+            status_text = "✅ 匹配成功" if net_profit > self.min_profit else "📉 利润微薄"
         elif audit_result == "VERSION_ERROR":
             status_text = "⚠️ 版本错位"
-            reason = "进货版低于变现版，价格不可对标"
         elif audit_result == "ENTITY_ERROR":
             status_text = "❌ 实体不符"
-            reason = "搜索结果非同款游戏"
-        else:
-            status_text = "❓ 审计失败"
-            reason = f"AI返回异常: {audit_result}"
 
-        # 构造最终日志条目
+        # 构造完整 log_entry，确保包含 'profit' 等所有字段防止前端 KeyError
         log_entry = {
             "time": datetime.datetime.now().strftime("%H:%M:%S"),
             "name": f"🛰️(点杀) {sk_name}" if is_manual else sk_name,
@@ -186,14 +182,13 @@ class ArbitrageCommander:
             "profit": profit_str,
             "status": status_text,
             "url": sk_item.get('url', 'https://www.sonkwo.cn'),
-            "reason": reason,
-            "roi": f"{current_roi:.1f}%"
+            "reason": audit_reason,
+            "roi": current_roi
         }
 
-        # 更新 Web 界面显示
         await self.update_result(log_entry)
         return log_entry
-    
+
     async def run_mission(self, keyword=""):
         mode_text = f"定点打击 [{keyword}]" if keyword else "全场史低巡航"
         print(f"\n[MISSION] 🎯 模式: {mode_text}")

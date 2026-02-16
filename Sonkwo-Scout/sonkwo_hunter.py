@@ -99,13 +99,22 @@ class SonkwoCNMonitor(SonkwoScout):
             results = []
             for item in items:
                 t_el = await item.query_selector(".title")
-                if t_el:
+                p_el = await item.query_selector(".SKC-sale-price") # 💡 抓取真实价格
+                a_el = await item.query_selector("a.listed-game-block") # 💡 抓取真实链接
+                
+                if t_el and p_el:
                     sk_name = (await t_el.text_content()).strip()
-                    # 💡 简单粗暴的硬过滤：只要搜索词在结果里，就是 100 分！
-                    if keyword.lower() in sk_name.lower():
-                        # 提取价格和URL逻辑保持不变...
-                        results.append({"title": sk_name, "url": "...", "price": "..."})
-            
+                    sk_price = (await p_el.text_content()).strip()
+                    href = await a_el.get_attribute("href") if a_el else ""
+                    full_url = f"https://www.sonkwo.cn{href}" if href.startswith("/") else href
+                    
+                    # 💡 必须返回真实数据，Commander 才能算账
+                    results.append({
+                        "title": sk_name, 
+                        "url": full_url, 
+                        "price": sk_price
+                    })
+            print(results)
             # 💡 关键：只要搜到结果，直接返回，不再往下走任何“自适应导航”
             return results 
         except:

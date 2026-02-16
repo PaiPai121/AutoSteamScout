@@ -182,7 +182,7 @@ async def continuous_cruise():
                     for item in sk_results:
                         # 同样调用统一方法
                         await global_commander.process_arbitrage_item(item)
-                        
+                        total_scanned_this_round += 1  # 💡 补上这一行计数
                         # 存盘还是留在网页端做
                         save_history()
 
@@ -257,22 +257,26 @@ async def get_dashboard():
     # 构造更丰富的表格行
     rows = ""
     for h in AGENT_STATE["history"]:
-        # 颜色逻辑：匹配成功且有利润为绿色
-        is_profitable = "✅" in h['status'] and "¥" in h['profit'] and "-" not in h['profit']
+        h_name = h.get('name', '未知商品')
+        h_sk_price = h.get('sk_price', '---')
+        h_py_price = h.get('py_price', '---')
+        h_profit = h.get('profit', '---')
+        h_status = h.get('status', '未知状态')
+        h_reason = h.get('reason', '未记录理由')
+        h_roi = h.get('roi', '0%')
+
+        is_profitable = "✅" in h_status and "¥" in h_profit and "-" not in h_profit
         color = "#3fb950" if is_profitable else "#f85149"
-        
-        # 构造进货按钮
-        buy_link = f'<a href="{h["url"]}" target="_blank" style="color:#ffcc00;text-decoration:none;">🛒 进货</a>' if h.get("url") else "---"
         
         rows += f"""
         <tr>
-            <td>{h['time']}</td>
-            <td style="font-weight:bold;">{h['name']}</td>
-            <td>{h['sk_price']}</td>
-            <td>{h['py_price']}</td>
-            <td style='color:{color}; font-weight:bold;'>{h['profit']} <small>({h.get('roi','0%')})</small></td>
-            <td><span style="font-size:12px; opacity:0.8;">{h['status']}</span><br><small style="color:#8b949e;">{h.get('reason','')}</small></td>
-            <td>{buy_link}</td>
+            <td>{h.get('time', '--:--:--')}</td>
+            <td style="font-weight:bold;">{h_name}</td>
+            <td>{h_sk_price}</td>
+            <td>{h_py_price}</td>
+            <td style='color:{color}; font-weight:bold;'>{h_profit} <small>({h_roi})</small></td>
+            <td><span style="font-size:12px; opacity:0.8;">{h_status}</span><br><small style="color:#8b949e;">原因: {h_reason}</small></td>
+            <td><a href="{h.get('url','#')}" target="_blank" style="color:#ffcc00;text-decoration:none;">🛒 进货</a></td>
         </tr>
         """
     
