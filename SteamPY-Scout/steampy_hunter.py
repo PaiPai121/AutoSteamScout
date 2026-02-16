@@ -99,94 +99,59 @@ class SteamPyMonitor(SteamPyScout):
 
     async def action_search(self, name):
         """
-        在列表页执行搜索：尝试多种变体，确保击穿搜索引擎盲区
+        [重构版] 简单直接的搜索逻辑：废除变体干扰，信任主控审计
         """
         import re
         
         # 1. 确保在列表页
         await self.action_goto()
         
-        # 2. 准备搜索变体（去重并保持顺序）
-        search_variants = [
-            name,                                   # 原名
-            re.sub(r'[：:，,。\.·・\-]', ' ', name),   # 标点变空格
-            re.sub(r'[：:，,。\.·・\-]', '', name)     # 标点全删掉连着写（黑神话专项）
-        ]
-        unique_variants = list(dict.fromkeys(search_variants))
+        # 2. 准备最核心的搜索词：原名 + 简单的标点纠正
+        # 💡 不再搞多种变体循环，只搜最稳的那个
+        clean_variant = re.sub(r'[：:，,。\.·・\-]', ' ', name).strip()
+        print(f"📡 [SteamPy] 正在执行硬核搜索: [{clean_variant}]")
         
-        cards = []
-        search_input = None
-        
-        # 3. 循环尝试每一个变体
-        for variant in unique_variants:
-            variant = " ".join(variant.split()) # 清理多余空格
-            print(f"🔍 尝试搜索变体: [{variant}]")
-            
-            try:
-                if not search_input:
-                    search_input = await self.page.wait_for_selector(".ivu-input", timeout=5000)
-                
-                await search_input.fill("") 
-                await search_input.fill(variant)
-                await self.page.keyboard.press("Enter")
-                
-                # 给 Vue 渲染留出缓冲
-                await asyncio.sleep(2.5) 
-                
-                cards = await self.page.query_selector_all(".gameblock")
-                if cards:
-                    print(f"✅ 变体 [{variant}] 命中结果！")
-                    break
-            except Exception as e:
-                print(f"🚨 搜索操作异常: {e}")
-                continue
-
-        if not cards:
-            print(f"❌ 搜索结果为空，尝试了所有变体仍未找到: {name}")
-            return False
-
-        # 4. 权重评分系统 (利用原名对比，确保版本对齐)
-        scored_results = []
-        for card in cards:
-            name_el = await card.query_selector(".gameName")
-            if name_el:
-                actual_name = (await name_el.text_content()).strip()
-                score = 0
-                
-                # A. 正向加分
-                if actual_name == name: 
-                    score += 100
-                elif name.lower() in actual_name.lower() or actual_name.lower() in name.lower(): 
-                    score += 50
-                
-                # B. 负向惩罚
-                interference_tags = {
-                    "DLC": 70, "扩展": 70, "原声": 80, "SOUNDTRACK": 80,
-                    "BUNDLE": 40, "合集": 40, "测试": 90, "体验版": 90
-                }
-                for tag, penalty in interference_tags.items():
-                    if tag.upper() in actual_name.upper():
-                        score -= penalty
-                
-                scored_results.append({"score": score, "card": card, "name": actual_name})
-
-        # 5. 决策与跳转
-        scored_results.sort(key=lambda x: x["score"], reverse=True)
-
-        if scored_results and scored_results[0]["score"] > 0:
-            target = scored_results[0]
-            print(f"🎯 选定最佳匹配: {target['name']} (得分: {target['score']})")
-            best_match = target["card"]
-        else:
-            print("⚠️ 匹配分过低，为防对齐错误，放弃跳转。")
-            return False
-
         try:
+            # 定位并填入搜索框
+            search_input = await self.page.wait_for_selector(".ivu-input", timeout=5000)
+            await search_input.fill("") 
+            await search_input.fill(clean_variant)
+            await self.page.keyboard.press("Enter")
+            
+            # 给 Vue 渲染留出缓冲 (保持原有的 2.5s 确保加载)
+            await asyncio.sleep(2.5) 
+            
+            cards = await self.page.query_selector_all(".gameblock")
+            if not cards:
+                print(f"❌ SteamPy 搜索结果为空: {clean_variant}")
+                return False
+
+            # 3. 简单的初筛逻辑 (不再使用复杂的评分)
+            best_match = None
+            for card in cards:
+                name_el = await card.query_selector(".gameName")
+                if name_el:
+                    actual_name = (await name_el.text_content()).strip()
+                    
+                    # 💡 只要包含了核心词（比如“耻辱2”在结果里），就直接冲！
+                    # 后续版本对不对，交给 Commander 里的 AI 审计去头疼
+                    if clean_variant.lower() in actual_name.lower() or actual_name.lower() in clean_variant.lower():
+                        print(f"✅ 找到语义匹配目标: {actual_name}")
+                        best_match = card
+                        break # 抓到第一个匹配的就走，效率最高
+
+            if not best_match:
+                print(f"⚠️ 列表页无语义关联目标，放弃跳转。")
+                return False
+
+            # 4. 执行跳转
             await best_match.click()
-            await self.page.wait_for_selector("span:has-text('返回')", timeout=8000)
+            # 增加对详情页特有元素的等待，确保跳转成功
+            await self.page.wait_for_selector(".game-title, span:has-text('返回')", timeout=10000)
             return True
+
         except Exception as e:
-            print(f"🚨 详情页进入失败: {e}")
+            print(f"🚨 SteamPy 搜索/跳转异常: {e}")
             return False
 
     async def action_scan(self):

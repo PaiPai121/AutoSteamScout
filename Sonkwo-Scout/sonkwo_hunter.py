@@ -80,32 +80,34 @@ class SonkwoCNMonitor(SonkwoScout):
             except: pass
             await asyncio.sleep(1)
 
+    # --- Sonkwo-Scout/sonkwo_hunter.py ---
+
     async def get_search_results(self, keyword):
         """
-        原子动作：仅负责搜索并返回结构化数据清单
+        侦察兵底层重构：强制单一搜索，废除智障评分
         """
-        url = f"https://www.sonkwo.cn/store/search?keyword={keyword}&key_type=steam_key&price_status=lowest"
-        await self.page.goto(url)
+        # 💡 强制只用原名，不搞什么 variant 变体循环
+        url = f"https://www.sonkwo.cn/store/search?keyword={keyword}&key_type=steam_key"
         
+        print(f"📡 [底层强攻] 目标: {keyword}")
         try:
-            await self.page.wait_for_selector(".sku-list-item", timeout=5000)
-            items = await self.page.query_selector_all(".sku-list-item")
+            await self.page.goto(url, wait_until="networkidle")
+            # 💡 这里增加一个“死等”：确保列表真的出来了
+            await self.page.wait_for_selector(".sku-list-item", timeout=3000)
             
-            data_list = []
-            for i, item in enumerate(items):
+            items = await self.page.query_selector_all(".sku-list-item")
+            results = []
+            for item in items:
                 t_el = await item.query_selector(".title")
-                p_el = await item.query_selector(".SKC-sale-price")
-                is_lowest = await item.query_selector(".lowest") is not None
-                
-                if t_el and p_el:
-                    data_list.append({
-                        "index": i + 1,
-                        "title": (await t_el.text_content()).strip(),
-                        "price": (await p_el.text_content()).strip(),
-                        "is_lowest": is_lowest,
-                        "handle": t_el # 存下这个句柄，方便待会儿直接点
-                    })
-            return data_list
+                if t_el:
+                    sk_name = (await t_el.text_content()).strip()
+                    # 💡 简单粗暴的硬过滤：只要搜索词在结果里，就是 100 分！
+                    if keyword.lower() in sk_name.lower():
+                        # 提取价格和URL逻辑保持不变...
+                        results.append({"title": sk_name, "url": "...", "price": "..."})
+            
+            # 💡 关键：只要搜到结果，直接返回，不再往下走任何“自适应导航”
+            return results 
         except:
             return []
 

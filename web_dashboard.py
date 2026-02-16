@@ -109,43 +109,20 @@ async def feishu_bot_handler(request: Request):
         if query_game and global_commander:
             async def task():
                 try:
-                    print(f"🚀 [专项任务启动]: 正在侦察游戏 [{query_game}]...")
-                    report = await global_commander.analyze_arbitrage(query_game)
-                    # 💡 [修复]：从报告中提取已经补全好的 URL
-                    url_match = re.search(r"🔗 进货链接 \(直接点\): \n(https?://\S+)", report)
-                    extracted_url = url_match.group(1) if url_match else "https://www.sonkwo.cn"
-                    # 💡 【新增：Web 可视化同步逻辑】
-                    # 正则提取利润和 ROI
-                    profit_match = re.search(r"预计净利润: ¥([\d\.\-]+)", report)
-                    roi_match = re.search(r"预计利润率: ([\d\.]+)%", report)
-                    sk_price_match = re.search(r"杉果成本: ¥([\d\.]+)", report)
+                    sk_results = await global_commander.sonkwo.get_search_results(query_game)
+                    if sk_results:
+                        # 💡 只有这一行！内部自动完成比价、去重、推送到 Web 界面
+                        await global_commander.process_arbitrage_item(sk_results[0], is_manual=True)
+                        save_history() # 存档
                     
-                    p_val = f"¥{profit_match.group(1)}" if profit_match else "---"
-                    r_val = f"{roi_match.group(1)}%" if roi_match else "0%"
-                    s_val = f"¥{sk_price_match.group(1)}" if sk_price_match else "---"
-
-                    log_entry = {
-                        "time": datetime.datetime.now().strftime("%H:%M:%S"),
-                        "name": f"🛰️(飞书) {query_game}", 
-                        "sk_price": s_val,
-                        "py_price": "见报告",
-                        "profit": p_val,
-                        "status": "✅ 专项查询",
-                        "reason": "由飞书即时触发",
-                        "roi": r_val,
-                        "url": extracted_url # 如果能从 report 提 url 更好
-                    }
-                    display_name = f"🛰️(飞书) {query_game}"
-                    AGENT_STATE["history"] = [h for h in AGENT_STATE["history"] if h['name'] != display_name]
-                    AGENT_STATE["history"].insert(0, log_entry)
-                    AGENT_STATE["history"] = AGENT_STATE["history"][:50]
-                    save_history()
-                    # 发送回馈
+                    # 💡 注意：如果你还需要给飞书发文字回复，可以单独调用 analyze_arbitrage
+                    # 但为了不重复查价，建议以后把文字报告也收束到 process_arbitrage_item 里
+                    report = await global_commander.analyze_arbitrage(query_game)
                     await global_commander.notifier.send_text(f"🎯 侦察回报：\n{report}")
-                except Exception as task_e:
-                    print(f"🚨 [专项任务崩溃]: {task_e}")
+                except Exception as e:
+                    print(f"🚨 飞书专项查询失败: {e}")
 
-            asyncio.create_task(task()) 
+            asyncio.create_task(task())
         else:
             if not query_game:
                 print("⚠️ [拦截]: 识别出的游戏名为空，不执行查询。")
@@ -162,7 +139,7 @@ async def continuous_cruise():
         try:
             # 1. 引擎初始化
             if global_commander is None:
-                global_commander = ArbitrageCommander()
+                global_commander = ArbitrageCommander(agent_state=AGENT_STATE)
             
             logger.info(f"🚀 [尝试 {retry_count + 1}] 正在启动侦察机引擎...")
             AGENT_STATE["current_mission"] = "侦察机初始化中..."
@@ -203,93 +180,11 @@ async def continuous_cruise():
                         logger.error(f"⚠️ 杉果扫描异常: {e}")
                         continue
                     for item in sk_results:
-                        total_scanned_this_round += 1 # 💡 累加总量
-                        sk_name = item['title']
-
-                        raw_url = item.get('url', '')
-                        if raw_url:
-                            if raw_url.startswith('//'):
-                                game_url = f"https:{raw_url}"
-                            elif raw_url.startswith('/'):
-                                game_url = f"https://www.sonkwo.cn{raw_url}"
-                            else:
-                                game_url = raw_url
-                        else:
-                            game_url = "https://www.sonkwo.cn"
-                        # 清理价格
-                        try:
-                            sk_price_raw = item['price'].replace('￥','').replace('券后价','').strip()
-                            sk_price = float(sk_price_raw) if sk_price_raw else 0.0
-                        except: continue
-
-                        AGENT_STATE["active_game"] = sk_name
+                        # 同样调用统一方法
+                        await global_commander.process_arbitrage_item(item)
                         
-                        # A. AI 优化关键词
-                        await asyncio.sleep(1.5) 
-                        clean_keyword = global_commander.ai.get_search_keyword(sk_name)
-                        
-                        # B. SteamPy 查价 (持有 Lock)
-                        async with global_commander.lock:
-                            py_data = await global_commander.steampy.get_game_market_price_with_name(clean_keyword)
-                        
-                        # C. 比价逻辑
-                        profit_str = "---"
-                        status_text = "⚠️ 未搜到"
-                        py_price_display = "---"
-                        current_roi = 0.0  # 💡 预设初始值，防止报错
-                        reason_text = "自动扫描" # 💡 预设初始值
-                        
-                        if py_data:
-                            py_price, py_match_name = py_data
-                            py_price_display = f"¥{py_price}"
-                            
-                            await asyncio.sleep(1.2)
-                            is_match = global_commander.ai.verify_version(sk_name, py_match_name)
-                            
-                            if is_match:
-                                net_profit = (py_price * 0.97) - sk_price
-                                profit_str = f"¥{net_profit:.2f}"
-                                current_roi = (net_profit / sk_price * 100) if sk_price > 0 else 0
-                                status_text = "✅ 匹配成功"
-                                reason_text = status_text
-                                if net_profit >= global_commander.min_profit:
-                                    logger.info(f"🔥 发现利润点: {sk_name} | 预计赚: {profit_str}")
-                                    # 飞书报报
-                                    global_commander.notifier.send_arbitrage_report([{
-                                        "title": sk_name, "sk_price": sk_price, 
-                                        "py_price": py_price, "profit": net_profit, 
-                                        "url": item.get('url', "")
-                                    }])
-                            else:
-                                status_text = "🛑 版本拦截"
-                                profit_str = "0.00"
-                                reason_text = status_text
-                        
-                        # 更新 Dashboard 状态
-                        # 更新 Dashboard 状态
-                        log_entry = {
-                            "time": datetime.datetime.now().strftime("%H:%M:%S"),
-                            "name": sk_name, 
-                            "sk_price": f"¥{sk_price}",
-                            "py_price": py_price_display, 
-                            "profit": profit_str,
-                            "status": status_text,
-                            "url": game_url,     # 💡 使用补全后的正确链接
-                            "reason": reason_text, # 💡 使用明确定义的变量
-                            "roi": f"{current_roi:.1f}%" # 💡 存入真实的 ROI
-                        }
-                        AGENT_STATE["history"] = [h for h in AGENT_STATE["history"] if h['name'] != sk_name]
-                        AGENT_STATE["history"].insert(0, log_entry)
-                        AGENT_STATE["history"] = AGENT_STATE["history"][:50]
-                        AGENT_STATE["scanned_count"] += 1
-                        AGENT_STATE["last_update"] = log_entry["time"]
+                        # 存盘还是留在网页端做
                         save_history()
-                        logger.info(f"📊 进度 [{AGENT_STATE['scanned_count']}]: {sk_name} -> {status_text}")
-                        if py_data and is_match:
-                            match_count += 1
-                            if net_profit >= global_commander.min_profit:
-                                profit_count += 1
-                                total_profit += net_profit
 
                 # 3. 🚨 重点：在这里插入简报发送逻辑 (for 循环结束后)
                 end_time = datetime.datetime.now()
@@ -389,6 +284,7 @@ async def get_dashboard():
     <head>
         <title>SENTINEL V2 | 战略指挥中心</title>
         <meta charset="utf-8">
+        <meta http-equiv="refresh" content="30">
         <style>
             :root {{ --main-gold: #ffcc00; --bg-dark: #0d1117; --border: #30363d; }}
             body {{ background: var(--bg-dark); color: #c9d1d9; font-family: 'Segoe UI', system-ui, sans-serif; padding:20px; line-height:1.5; }}
