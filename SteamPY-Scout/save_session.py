@@ -3,97 +3,101 @@ import os
 import sys
 from playwright.async_api import async_playwright
 
-async def save_steampy_phone_login_interactive():
+async def save_steampy_headless_optimized():
     async with async_playwright() as p:
-        user_data_dir = os.path.join(os.getcwd(), "steampy_data")
+        # 确保路径指向 SteamPY-Scout 内部
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        user_data_dir = os.path.join(current_dir, "steampy_data")
         
-        # 1. 启动持久化上下文
         context = await p.chromium.launch_persistent_context(
             user_data_dir,
-            headless=True,  # 强制 Headless 模式
-            args=["--disable-blink-features=AutomationControlled"]
+            headless=True,  # 云端必须为 True
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
         )
         
         page = context.pages[0] if context.pages else await context.new_page()
-        page.set_default_timeout(6000000)
+        # 设置较大的超时，应对云端网络波动
+        page.set_default_timeout(600000)
         
-        print("🌐 [Headless] 正在进入 SteamPy 手机号登录流程...")
-        await page.goto("https://steampy.com/login", wait_until="domcontentloaded")
-        await asyncio.sleep(5) # 等待 iView 渲染
+        print("🌐 [Sentinel] 正在进入 SteamPy 深度登录取证模式...")
+        await page.goto("https://steampy.com/login", wait_until="networkidle")
+        await asyncio.sleep(3)
 
         try:
-            # 2. 强制切换到“手机号登录” Tab
-            # 根据 HTML，这是第二个 .ivu-tabs-tab
-            print("📱 正在切换至手机号登录 Tab...")
+            # 1. 强制切换 Tab
+            print("📱 切换手机号登录...")
             tabs = await page.query_selector_all(".ivu-tabs-tab")
             if len(tabs) >= 2:
                 await tabs[1].click(force=True)
-                await asyncio.sleep(1.5)
             
-            # 3. 强制勾选“自动登录”和“协议”
-            # 使用 JS 确保勾选状态机被触发
-            print("✅ 正在自动勾选协议与自动登录...")
-            checkboxes = await page.query_selector_all(".ivu-checkbox-input")
-            for cb in checkboxes:
-                await cb.evaluate("node => node.checked = true")
-                await cb.evaluate("node => node.dispatchEvent(new Event('change', { bubbles: true }))")
+            # 2. 强制勾选协议 (使用注入 JS 绕过点击拦截)
+            print("✅ 注入协议勾选状态...")
+            await page.evaluate("() => { document.querySelectorAll('.ivu-checkbox-input').forEach(c => { c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); }); }")
 
-            # 4. 输入手机号
+            # 3. 输入手机号
             phone_num = input("\n📱 请输入手机号: ").strip()
-            # 定位“请输入手机号”的输入框
-            phone_input = await page.wait_for_selector("input[placeholder='请输入手机号']", state="visible")
-            await phone_input.fill(phone_num)
+            await page.fill("input[placeholder='请输入手机号']", phone_num)
 
-            # 5. 点击“获取验证码”
-            print("📩 正在请求发送短信验证码...")
-            # 查找包含“获取验证码”文本的按钮
-            send_btn = await page.wait_for_selector("button:has-text('获取验证码')", state="visible")
-            await send_btn.click()
-            print("✅ 短信已发送，请注意查收手机。")
+            # 4. 请求验证码并截图诊断
+            print("📩 发送验证码...")
+            await page.click("button:has-text('获取验证码')")
+            await asyncio.sleep(2)
+            await page.screenshot(path="debug_after_sms.png")
+            print("📸 [诊断] 已生成 debug_after_sms.png，若未收到短信请检查是否有滑动验证码。")
 
-            # 6. 输入短信验证码
-            sms_code = input("💬 请输入收到的 6 位短信验证码: ").strip()
-            code_input = await page.wait_for_selector("input[placeholder='请输入短信验证码']", state="visible")
-            await code_input.fill(sms_code)
+            # 5. 输入验证码
+            sms_code = input("💬 请输入短信验证码: ").strip()
+            await page.fill("input[placeholder='请输入短信验证码']", sms_code)
 
-            # 7. 点击登录按钮
-            print("🚀 正在提交登录...")
-            # 锁定具有 .login-btn 类名的按钮
-            await page.click("button.login-btn")
+            # 6. 核心：强制执行登录逻辑并监控 LocalStorage
+            print("🚀 提交登录指令...")
+            # 这种点击方式能更好地触发 Vue 组件事件
+            login_btn = await page.wait_for_selector("button.login-btn")
+            await login_btn.click()
 
-            # 8. 闭环验证：确认 Token 是否写入
-            print("⏳ 正在验证并执行磁盘同步...")
+            # 7. 闭环验证：循环探测 Token 和 URL 变化
+            print("⏳ 正在捕捉加密 Token...")
             success = False
-            for _ in range(20):
-                # 嗅探 SteamPy 的内存凭证
-                has_token = await page.evaluate("""
-                    () => localStorage.getItem('accessToken') !== null || 
-                           localStorage.getItem('userInfo') !== null
+            for i in range(15):
+                # 检查两个关键存储项
+                token_data = await page.evaluate("""
+                    () => {
+                        return localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
+                    }
                 """)
-                if has_token:
+                
+                if token_data:
+                    print(f"\n✨ 成功捕获 Token: {token_data[:15]}...")
                     success = True
                     break
-                await asyncio.sleep(1)
-                sys.stdout.write(".")
+                
+                # 如果 URL 变成了 home，也算成功
+                if "home" in page.url:
+                    success = True
+                    break
+                    
+                await asyncio.sleep(2)
+                sys.stdout.write("🛰️ ")
                 sys.stdout.flush()
+                # 过程截图
+                if i % 3 == 0:
+                    await page.screenshot(path=f"debug_login_step_{i}.png")
 
             if success:
-                print("\n✅ 登录成功！正在锁定磁盘 I/O...")
-                # 导出状态快照作为备份，同时触发 Flush
-                await context.storage_state(path=os.path.join(user_data_dir, "state.json"))
-                # 诱导刷新
-                await page.goto("https://steampy.com/home", wait_until="domcontentloaded")
-                await asyncio.sleep(5)
-                print(f"🎉 SteamPy Session 已在 Headless 模式下安全锁定。")
+                print("\n✅ 验证通过。正在强制刷新并锁定磁盘...")
+                # 诱导刷新以触发持久化存储
+                await page.goto("https://steampy.com/home", wait_until="networkidle")
+                await context.storage_state(path=os.path.join(user_data_dir, "state.json")) # 备份状态
+                await asyncio.sleep(3)
+                print(f"🎉 Session 已在无头模式下安全固化。")
             else:
-                print("\n❌ 登录未成功，请检查验证码是否输入正确或已过期。")
+                print("\n❌ 登录超时或被拦截。请检查生成的 debug_*.png 截图。")
 
         except Exception as e:
-            print(f"\n🚨 运行异常: {e}")
+            print(f"\n🚨 关键路径故障: {e}")
         finally:
-            if context:
-                await context.close()
-            print(f"✅ 处理结束。Session 目录: {user_data_dir}")
+            await context.close()
+            print(f"✅ 处理结束。")
 
 if __name__ == "__main__":
-    asyncio.run(save_steampy_phone_login_interactive())
+    asyncio.run(save_steampy_headless_optimized())

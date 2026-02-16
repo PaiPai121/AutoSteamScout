@@ -111,7 +111,9 @@ async def feishu_bot_handler(request: Request):
                 try:
                     print(f"🚀 [专项任务启动]: 正在侦察游戏 [{query_game}]...")
                     report = await global_commander.analyze_arbitrage(query_game)
-                    
+                    # 💡 [修复]：从报告中提取已经补全好的 URL
+                    url_match = re.search(r"🔗 进货链接 \(直接点\): \n(https?://\S+)", report)
+                    extracted_url = url_match.group(1) if url_match else "https://www.sonkwo.cn"
                     # 💡 【新增：Web 可视化同步逻辑】
                     # 正则提取利润和 ROI
                     profit_match = re.search(r"预计净利润: ¥([\d\.\-]+)", report)
@@ -131,8 +133,10 @@ async def feishu_bot_handler(request: Request):
                         "status": "✅ 专项查询",
                         "reason": "由飞书即时触发",
                         "roi": r_val,
-                        "url": "https://www.sonkwo.cn" # 如果能从 report 提 url 更好
+                        "url": extracted_url # 如果能从 report 提 url 更好
                     }
+                    display_name = f"🛰️(飞书) {query_game}"
+                    AGENT_STATE["history"] = [h for h in AGENT_STATE["history"] if h['name'] != display_name]
                     AGENT_STATE["history"].insert(0, log_entry)
                     AGENT_STATE["history"] = AGENT_STATE["history"][:50]
                     save_history()
@@ -201,6 +205,17 @@ async def continuous_cruise():
                     for item in sk_results:
                         total_scanned_this_round += 1 # 💡 累加总量
                         sk_name = item['title']
+
+                        raw_url = item.get('url', '')
+                        if raw_url:
+                            if raw_url.startswith('//'):
+                                game_url = f"https:{raw_url}"
+                            elif raw_url.startswith('/'):
+                                game_url = f"https://www.sonkwo.cn{raw_url}"
+                            else:
+                                game_url = raw_url
+                        else:
+                            game_url = "https://www.sonkwo.cn"
                         # 清理价格
                         try:
                             sk_price_raw = item['price'].replace('￥','').replace('券后价','').strip()
@@ -236,7 +251,7 @@ async def continuous_cruise():
                                 profit_str = f"¥{net_profit:.2f}"
                                 current_roi = (net_profit / sk_price * 100) if sk_price > 0 else 0
                                 status_text = "✅ 匹配成功"
-                                
+                                reason_text = status_text
                                 if net_profit >= global_commander.min_profit:
                                     logger.info(f"🔥 发现利润点: {sk_name} | 预计赚: {profit_str}")
                                     # 飞书报报
@@ -248,6 +263,7 @@ async def continuous_cruise():
                             else:
                                 status_text = "🛑 版本拦截"
                                 profit_str = "0.00"
+                                reason_text = status_text
                         
                         # 更新 Dashboard 状态
                         # 更新 Dashboard 状态
@@ -258,10 +274,11 @@ async def continuous_cruise():
                             "py_price": py_price_display, 
                             "profit": profit_str,
                             "status": status_text,
-                            "url": item.get('url', "https://www.sonkwo.cn"), # 💡 新增链接
-                            "reason": reason if 'reason' in locals() else "自动扫描", # 💡 新增 AI 理由
+                            "url": game_url,     # 💡 使用补全后的正确链接
+                            "reason": reason_text, # 💡 使用明确定义的变量
                             "roi": f"{current_roi:.1f}%" # 💡 存入真实的 ROI
                         }
+                        AGENT_STATE["history"] = [h for h in AGENT_STATE["history"] if h['name'] != sk_name]
                         AGENT_STATE["history"].insert(0, log_entry)
                         AGENT_STATE["history"] = AGENT_STATE["history"][:50]
                         AGENT_STATE["scanned_count"] += 1

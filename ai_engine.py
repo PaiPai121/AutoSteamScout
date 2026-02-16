@@ -37,13 +37,15 @@ class ArbitrageAI:
         """核心能力 1：降噪提取（增强保护版）"""
         prompt = (
             "你是一个游戏搜索专家。请从商品标题中提取出核心名称。\n"
-            "【特别指令】：\n"
-            "1. 严禁过度精简！如果标题包含特定修饰词（如 '太阳帝国的原罪 2'），必须完整保留。不要缩减为 '原罪 2'，否则会搜错游戏。\n"
-            "2. 去掉'标准版/豪华版/Steam版'等版本和平台描述词。\n"
+            "【强制准则】：\n"
+            "1. 绝不能删除游戏本身名字的一部分！例如 '空洞骑士' 不能缩减为 '空洞'，'赛博朋克 2077' 不能缩减为 '赛博朋克'。\n"
+            "2. 仅删除以下无关后缀：'标准版'、'豪华版'、'Steam版'、'数字版'、'SKU'、'激活码'、'券后价'。\n"
+            "3. 如果标题包含中英文，请同时保留（如：Hollow Knight 空洞骑士）。\n"
             f"输入标题：{raw_name}\n"
             "仅输出结果（核心名称）："
         )
         result = self._call_with_retry(prompt)
+        print(result)
         return result if result else raw_name
 
     def verify_version(self, sk_name, py_name):
