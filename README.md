@@ -1,6 +1,6 @@
-# SteamCN 套利哨兵
+# SteamCN 哨兵
 
-SteamCN 套利哨兵是一个高级自动化套利检测系统，旨在识别 Steam 和 Sonkwo（杉果）游戏平台之间的盈利机会。该工具利用浏览器自动化监控价格差异，并实时识别潜在的套利机会。
+SteamCN 哨兵是一个高级自动化检测系统，旨在识别 Steam 和 Sonkwo（杉果）游戏平台之间的盈利机会。该工具利用浏览器自动化监控价格差异，并实时识别潜在的机会。
 
 ## 概述
 
@@ -31,7 +31,7 @@ SteamCN 套利哨兵是一个高级自动化套利检测系统，旨在识别 St
 ## 架构
 
 ```
-SteamCN 套利哨兵/
+SteamCN 哨兵/
 ├── SteamPY-Scout/
 │   ├── steampy_scout_core.py    # 核心 Steam 浏览器自动化
 │   ├── steampy_hunter.py        # 高级 Steam 监控功能
@@ -102,7 +102,7 @@ python sonkwo_hunter.py
 
 ## 关键功能详解
 
-### 套利检测
+### 检测
 系统识别以下情况的机会：
 - 游戏在杉果上的价格低于 Steam 上的当前市场价格
 - 历史最低价指标帮助识别最佳交易

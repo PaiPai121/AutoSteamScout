@@ -234,7 +234,7 @@ class SonkwoCNMonitor(SonkwoScout):
         finally:
             await self.stop()
     async def action_scan_detail(self):
-        """精准提取详情页套利情报 (修复游戏名抓取错误)"""
+        """精准提取详情页情报 (修复游戏名抓取错误)"""
         print("\n[ANALYSIS] 🧐 正在深度解析详情页...")
         try:
             # 1. 标题：精准锁定 .sku-cn-name，绝不误抓昵称
@@ -278,7 +278,7 @@ class SonkwoCNMonitor(SonkwoScout):
             print("✅ 区域校验：商品与环境匹配。")
 
     async def action_scan_confirm(self):
-        """[数据核对] 修复：精准定位【已勾选】的优惠券及套利提醒"""
+        """[数据核对] 修复：精准定位【已勾选】的优惠券及提醒"""
         print("\n[CONFIRM] 🧾 正在核对订单详情...")
         try:
             # 1. 提取最终实付金额 (这个最准)
@@ -294,13 +294,13 @@ class SonkwoCNMonitor(SonkwoScout):
             else:
                 coupon_status = "❌ 未检测到勾选优惠券"
 
-            # 3. 捕捉极致套利机会 (再买￥0.9减￥10)
+            # 3. 捕捉极致机会 (再买￥0.9减￥10)
             # 只要这个 reach-minimum-hint 出现，说明有负成本凑单机会
             arbitrage_hint = await self.page.query_selector(".reach-minimum-block")
             arbitrage_msg = ""
             if arbitrage_hint:
                 hint_text = await arbitrage_hint.inner_text()
-                arbitrage_msg = f"\n🔥 [套利提醒] {hint_text.replace('去凑单', '').strip()}"
+                arbitrage_msg = f"\n🔥 [提醒] {hint_text.replace('去凑单', '').strip()}"
                 arbitrage_msg += "\n   策略：随便买个 1 元游戏，总价还能再降 5 元！"
 
             print("-" * 50)

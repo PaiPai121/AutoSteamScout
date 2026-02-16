@@ -94,7 +94,20 @@ class ArbitrageCommander:
                 net_rev = py_price * 0.97
                 profit = net_rev - sk_price
                 roi = (profit / sk_price) * 100 if sk_price > 0 else 0
-
+                # 💡 获取并格式化 URL
+                raw_url = target.get('url', '')
+                if raw_url:
+                    # 确保 URL 是完整的 https 格式，否则飞书点不动
+                    if raw_url.startswith('//'):
+                        game_url = f"https:{raw_url}"
+                    elif raw_url.startswith('/'):
+                        game_url = f"https://www.sonkwo.cn{raw_url}"
+                    elif not raw_url.startswith('http'):
+                        game_url = f"https://{raw_url}"
+                    else:
+                        game_url = raw_url
+                else:
+                    game_url = "https://www.sonkwo.cn"
                 report += (
                     f"📦 SteamPy 匹配: {py_match_name}\n"
                     f"⚖️ 判定理由: {reason}\n"
@@ -104,10 +117,11 @@ class ArbitrageCommander:
                     f"💹 扣费后到账: ¥{net_rev:.2f}\n"
                     f"💵 预计净利润: ¥{profit:.2f}\n"
                     f"📈 预计利润率: {roi:.2f}%\n"
+                    f"🔗 进货链接 (直接点): \n{game_url}" # 💡 直接拼入纯字符串
                 )
                 
                 if is_match and profit >= self.min_profit:
-                    report += "\n🔥 结论: 发现套利空间，建议搬运！"
+                    report += "\n🔥 结论: 发现空间，建议搬运！"
                 else:
                     report += "\n❌ 结论: 利润不足或版本拦截。"
                 

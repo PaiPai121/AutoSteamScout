@@ -1,0 +1,46 @@
+[
+  {
+    "time": "17:10:51",
+    "name": "街霸6",
+    "sk_price": "¥94.0",
+    "py_price": "---",
+    "profit": "---",
+    "status": "⚠️ 未搜到",
+    "url": "https://www.sonkwo.cn",
+    "reason": "自动扫描",
+    "roi": "0.0%"
+  },
+  {
+    "time": "17:10:48",
+    "name": "幻兽帕鲁",
+    "sk_price": "¥76.0",
+    "py_price": "¥73.5",
+    "profit": "¥-4.70",
+    "status": "✅ 匹配成功",
+    "url": "https://www.sonkwo.cn",
+    "reason": "自动扫描",
+    "roi": "-6.2%"
+  },
+  {
+    "time": "17:10:35",
+    "name": "地痞街区",
+    "sk_price": "¥15.0",
+    "py_price": "¥7.99",
+    "profit": "0.00",
+    "status": "🛑 版本拦截",
+    "url": "https://www.sonkwo.cn",
+    "reason": "自动扫描",
+    "roi": "0.0%"
+  },
+  {
+    "time": "17:10:22",
+    "name": "猎人：荒野的召唤",
+    "sk_price": "¥7.0",
+    "py_price": "¥4.68",
+    "profit": "¥-2.46",
+    "status": "✅ 匹配成功",
+    "url": "https://www.sonkwo.cn",
+    "reason": "自动扫描",
+    "roi": "-35.1%"
+  }
+]

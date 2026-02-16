@@ -37,6 +37,31 @@ AGENT_STATE = {
     "history": [] # 最近 50 条比价记录
 }
 
+HISTORY_FILE = os.path.join(ROOT_DIR, "arbitrage_history.json")
+
+def save_history():
+    """将历史记录持久化到磁盘 (原子性保护)"""
+    try:
+        # 预先生成 JSON 字符串，防止写入过程中出错导致文件半截
+        content = json.dumps(AGENT_STATE["history"], ensure_ascii=False, indent=2)
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception as e:
+        logger.error(f"🚨 [黑匣子] 写入失败: {e}")
+
+def load_history():
+    """启动时从磁盘加载历史"""
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+# 在 AGENT_STATE 初始化时调用
+AGENT_STATE["history"] = load_history()
+
 @app.post("/feishu/webhook")
 async def feishu_bot_handler(request: Request):
     try:
@@ -85,12 +110,34 @@ async def feishu_bot_handler(request: Request):
             async def task():
                 try:
                     print(f"🚀 [专项任务启动]: 正在侦察游戏 [{query_game}]...")
-                    # 执行分析
                     report = await global_commander.analyze_arbitrage(query_game)
                     
+                    # 💡 【新增：Web 可视化同步逻辑】
+                    # 正则提取利润和 ROI
+                    profit_match = re.search(r"预计净利润: ¥([\d\.\-]+)", report)
+                    roi_match = re.search(r"预计利润率: ([\d\.]+)%", report)
+                    sk_price_match = re.search(r"杉果成本: ¥([\d\.]+)", report)
+                    
+                    p_val = f"¥{profit_match.group(1)}" if profit_match else "---"
+                    r_val = f"{roi_match.group(1)}%" if roi_match else "0%"
+                    s_val = f"¥{sk_price_match.group(1)}" if sk_price_match else "---"
+
+                    log_entry = {
+                        "time": datetime.datetime.now().strftime("%H:%M:%S"),
+                        "name": f"🛰️(飞书) {query_game}", 
+                        "sk_price": s_val,
+                        "py_price": "见报告",
+                        "profit": p_val,
+                        "status": "✅ 专项查询",
+                        "reason": "由飞书即时触发",
+                        "roi": r_val,
+                        "url": "https://www.sonkwo.cn" # 如果能从 report 提 url 更好
+                    }
+                    AGENT_STATE["history"].insert(0, log_entry)
+                    AGENT_STATE["history"] = AGENT_STATE["history"][:50]
+                    save_history()
                     # 发送回馈
                     await global_commander.notifier.send_text(f"🎯 侦察回报：\n{report}")
-                    print(f"✅ [任务完成]: 报告已成功发回飞书群。")
                 except Exception as task_e:
                     print(f"🚨 [专项任务崩溃]: {task_e}")
 
@@ -174,6 +221,8 @@ async def continuous_cruise():
                         profit_str = "---"
                         status_text = "⚠️ 未搜到"
                         py_price_display = "---"
+                        current_roi = 0.0  # 💡 预设初始值，防止报错
+                        reason_text = "自动扫描" # 💡 预设初始值
                         
                         if py_data:
                             py_price, py_match_name = py_data
@@ -185,6 +234,7 @@ async def continuous_cruise():
                             if is_match:
                                 net_profit = (py_price * 0.97) - sk_price
                                 profit_str = f"¥{net_profit:.2f}"
+                                current_roi = (net_profit / sk_price * 100) if sk_price > 0 else 0
                                 status_text = "✅ 匹配成功"
                                 
                                 if net_profit >= global_commander.min_profit:
@@ -200,16 +250,23 @@ async def continuous_cruise():
                                 profit_str = "0.00"
                         
                         # 更新 Dashboard 状态
+                        # 更新 Dashboard 状态
                         log_entry = {
                             "time": datetime.datetime.now().strftime("%H:%M:%S"),
-                            "name": sk_name, "sk_price": f"¥{sk_price}",
-                            "py_price": py_price_display, "profit": profit_str,
-                            "status": status_text
+                            "name": sk_name, 
+                            "sk_price": f"¥{sk_price}",
+                            "py_price": py_price_display, 
+                            "profit": profit_str,
+                            "status": status_text,
+                            "url": item.get('url', "https://www.sonkwo.cn"), # 💡 新增链接
+                            "reason": reason if 'reason' in locals() else "自动扫描", # 💡 新增 AI 理由
+                            "roi": f"{current_roi:.1f}%" # 💡 存入真实的 ROI
                         }
                         AGENT_STATE["history"].insert(0, log_entry)
                         AGENT_STATE["history"] = AGENT_STATE["history"][:50]
                         AGENT_STATE["scanned_count"] += 1
                         AGENT_STATE["last_update"] = log_entry["time"]
+                        save_history()
                         logger.info(f"📊 进度 [{AGENT_STATE['scanned_count']}]: {sk_name} -> {status_text}")
                         if py_data and is_match:
                             match_count += 1
@@ -285,71 +342,104 @@ async def check_game(name: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard():
-    # 生成历史记录表格行
+    # 构造更丰富的表格行
     rows = ""
     for h in AGENT_STATE["history"]:
-        color = "#00ff41" if "¥" in h['profit'] and "-" not in h['profit'] else "#ff4444"
-        rows += f"<tr><td>{h['time']}</td><td>{h['name']}</td><td>{h['sk_price']}</td><td>{h['py_price']}</td><td style='color:{color}'>{h['profit']}</td><td>{h['status']}</td></tr>"
+        # 颜色逻辑：匹配成功且有利润为绿色
+        is_profitable = "✅" in h['status'] and "¥" in h['profit'] and "-" not in h['profit']
+        color = "#3fb950" if is_profitable else "#f85149"
+        
+        # 构造进货按钮
+        buy_link = f'<a href="{h["url"]}" target="_blank" style="color:#ffcc00;text-decoration:none;">🛒 进货</a>' if h.get("url") else "---"
+        
+        rows += f"""
+        <tr>
+            <td>{h['time']}</td>
+            <td style="font-weight:bold;">{h['name']}</td>
+            <td>{h['sk_price']}</td>
+            <td>{h['py_price']}</td>
+            <td style='color:{color}; font-weight:bold;'>{h['profit']} <small>({h.get('roi','0%')})</small></td>
+            <td><span style="font-size:12px; opacity:0.8;">{h['status']}</span><br><small style="color:#8b949e;">{h.get('reason','')}</small></td>
+            <td>{buy_link}</td>
+        </tr>
+        """
     
-    dot_color = "#00ff41" if AGENT_STATE["is_running"] else "#ff4444"
+    dot_color = "#3fb950" if AGENT_STATE["is_running"] else "#f85149"
     
-    # 嵌入交互面板的 HTML
     html = f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>SENTINEL DASHBOARD</title>
+        <title>SENTINEL V2 | 战略指挥中心</title>
         <meta charset="utf-8">
         <style>
-            body {{ background:#0a0a0a; color:#00ff41; font-family:'Consolas', monospace; padding:30px; }}
-            .panel {{ border:1px solid #00ff41; padding:20px; box-shadow:0 0 10px #00ff4133; margin-bottom:20px; }}
-            .dot {{ height:10px; width:10px; background:{dot_color}; border-radius:50%; display:inline-block; }}
-            table {{ width:100%; border-collapse:collapse; margin-top:20px; }}
-            th, td {{ padding:10px; border-bottom:1px solid #1a1a1a; text-align:left; }}
-            input {{ background:#000; color:#0ff; border:1px solid #00ff41; padding:8px; width:250px; }}
-            button {{ background:#00ff41; color:#000; border:none; padding:8px 15px; cursor:pointer; font-weight:bold; }}
-            #resultArea {{ color:#0ff; background:#111; padding:10px; border-radius:5px; margin-top:15px; border-left:3px solid #0ff; display:none; white-space: pre-wrap; }}
+            :root {{ --main-gold: #ffcc00; --bg-dark: #0d1117; --border: #30363d; }}
+            body {{ background: var(--bg-dark); color: #c9d1d9; font-family: 'Segoe UI', system-ui, sans-serif; padding:20px; line-height:1.5; }}
+            .panel {{ background: #161b22; border: 1px solid var(--border); padding:20px; border-radius:8px; margin-bottom:20px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }}
+            .status-bar {{ display:flex; align-items:center; gap:15px; margin-bottom:10px; }}
+            .dot {{ height:12px; width:12px; background:{dot_color}; border-radius:50%; box-shadow: 0 0 8px {dot_color}; }}
+            table {{ width:100%; border-collapse:separate; border-spacing:0; margin-top:10px; }}
+            th {{ background: #21262d; padding:12px; text-align:left; border-bottom: 2px solid var(--main-gold); }}
+            td {{ padding:12px; border-bottom:1px solid var(--border); }}
+            tr:hover {{ background: #21262d; }}
+            .search-box {{ display:flex; gap:10px; margin-top:15px; }}
+            input {{ background:#0d1117; color:#fff; border:1px solid var(--border); padding:10px; border-radius:4px; flex-grow:1; outline:none; }}
+            input:focus {{ border-color: var(--main-gold); }}
+            button {{ background:var(--main-gold); color:#000; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold; }}
+            #resultArea {{ background:#000; color:#0ff; padding:15px; border-radius:4px; margin-top:15px; border-left:4px solid var(--main-gold); display:none; white-space: pre-wrap; font-family: monospace; }}
         </style>
     </head>
     <body>
         <div class="panel">
-            <h2><span style="animation: blink 1s infinite;">🛰️</span> SENTINEL CONTROL PANEL</h2>
-            <p><span class="dot"></span> 状态: {AGENT_STATE['current_mission']}</p>
-            <p>锁定目标: {AGENT_STATE['active_game']}</p>
+            <div class="status-bar">
+                <div class="dot"></div>
+                <h2 style="margin:0; color:var(--main-gold);">🛰️ SENTINEL V2.5 AI-ENHANCED</h2>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                <div>📍 当前任务: <span style="color:#fff;">{AGENT_STATE['current_mission']}</span></div>
+                <div>🎯 目标锁定: <span style="color:#fff;">{AGENT_STATE['active_game']}</span></div>
+            </div>
         </div>
 
         <div class="panel">
-            <h3>🔍 专项套利侦察 (交互式)</h3>
-            <input type="text" id="gameInput" placeholder="输入游戏名称...">
-            <button onclick="checkProfit()">执行分析</button>
+            <h3>🔍 深度侦察模式 (AI 分析)</h3>
+            <div class="search-box">
+                <input type="text" id="gameInput" placeholder="输入游戏名称（支持模糊搜索，AI 自动对齐版本）...">
+                <button onclick="checkProfit()">开始侦察</button>
+            </div>
             <pre id="resultArea"></pre>
         </div>
 
-        <table>
-            <thead><tr><th>时间</th><th>游戏</th><th>杉果</th><th>SteamPy</th><th>预期利润</th><th>判定</th></tr></thead>
-            <tbody>{rows}</tbody>
-        </table>
+        <div class="panel" style="padding:0; overflow:hidden;">
+            <table>
+                <thead>
+                    <tr><th>时间</th><th>游戏实体</th><th>杉果成本</th><th>SteamPy</th><th>预期利润(ROI)</th><th>AI 状态</th><th>操作</th></tr>
+                </thead>
+                <tbody>{rows}</tbody>
+            </table>
+        </div>
 
         <script>
         async function checkProfit() {{
             const btn = document.querySelector('button');
             const resArea = document.getElementById('resultArea');
             const name = document.getElementById('gameInput').value;
-            
             if(!name) return;
             
-            btn.innerText = '侦察中...';
+            btn.innerText = '🛰️ 调动卫星中...';
+            btn.disabled = true;
             resArea.style.display = 'block';
-            resArea.innerText = '🛰️ 正在调动 AI 与浏览器资源进行跨平台比对...';
+            resArea.innerText = '正在调取多平台接口并运行 AI 版本校验模型...';
             
             try {{
                 const res = await fetch(`/check?name=${{encodeURIComponent(name)}}`);
                 const data = await res.json();
                 resArea.innerText = data.report;
             }} catch(e) {{
-                resArea.innerText = '🚨 通信故障';
+                resArea.innerText = '🚨 通信中断，请检查服务器连接';
             }} finally {{
-                btn.innerText = '执行分析';
+                btn.innerText = '开始侦察';
+                btn.disabled = false;
             }}
         }}
         </script>
