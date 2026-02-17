@@ -63,13 +63,20 @@ class ArbitrageCommander:
     async def update_result(self, log_entry):
         """统一结果分发中心"""
         if self.agent_state:
-            # 方案 B：去重覆盖逻辑
-            self.agent_state["history"] = [
-                h for h in self.agent_state["history"] 
-                if h['name'] != log_entry['name']
-            ]
+            # 1. 将新记录插入到列表最前端（确保 Dashboard 顶部永远是最新的）
             self.agent_state["history"].insert(0, log_entry)
-            self.agent_state["history"] = self.agent_state["history"][:50]
+            
+            # 2. 设置一个内存上限（例如 100 条），防止本次巡航时间过长撑爆页面
+            if len(self.agent_state["history"]) > 100:
+                self.agent_state["history"] = self.agent_state["history"][:100]
+        # if self.agent_state:
+        #     # 方案 B：去重覆盖逻辑
+        #     self.agent_state["history"] = [
+        #         h for h in self.agent_state["history"] 
+        #         if h['name'] != log_entry['name']
+        #     ]
+        #     self.agent_state["history"].insert(0, log_entry)
+        #     self.agent_state["history"] = self.agent_state["history"][:50]
 
     async def close_all(self):
         await self.sonkwo.stop()
@@ -115,7 +122,7 @@ class ArbitrageCommander:
 
         # --- 2. 搜索词降噪（不缩词，调用类外定义的 get_search_query） ---
         search_keyword = get_search_query(sk_name)
-
+        print(f"🔍 [COMMANDER] 原始名: [{sk_name}] -> 降噪搜索词: [{search_keyword}]")
         # --- 3. 跨平台侦察 (SteamPy 撞库) ---
         py_data = None
         async with self.lock:
@@ -128,7 +135,7 @@ class ArbitrageCommander:
             return None
 
         py_price, py_match_name = py_data
-
+        print(f"🎯 [COMMANDER] 进货端: {sk_name} (¥{sk_price}) | 变现端: {py_match_name} (¥{py_price})")
         # --- 4. AI 语义审计（判定结果 + 理由捕获） ---
         audit_prompt = f"""
         请对比以下两个游戏商品，判断它们是否为【同一个游戏】且【版本价值对等】。
@@ -140,26 +147,48 @@ class ArbitrageCommander:
         - MATCH: 同款且版本一致，或进货版本更高。
         - VERSION_ERROR: 同款但进货版本低（如标准版对标豪华版价）。
         - ENTITY_ERROR: 根本不是同一个游戏。
-
-        请严格按以下格式回复：
+        【强制执行准则】:
+        1. 版本严阵以待：如果进货端是“标准版/Standard”，而变现端含有“豪华/Deluxe/Gold/Ultimate/Super”等字样，必须判定为 VERSION_ERROR。
+        2. 价值不对等拦截：严禁“低版本”对标“高版本”。哪怕是同款游戏，只要版本后缀不同，一律拦截。
+        3. 实体校验：如果一个是游戏本体，另一个是 DLC、原声带、合集，必须判定为 ENTITY_ERROR。
+        4. 别名放行：允许 P5R 对应 Persona 5 Royal 这种合理的翻译或缩写对齐。
+        5. 渠道对齐规则：
+           - 进货端含有“Steam版”或“Steam Key”字样，而变现端只写了游戏名（如：古剑奇谭），这种情况应视为【同一个游戏】。
+           - 变现端（SteamPy）本身就是基于 Steam 市场的，所以不需要重复确认“是否为 Steam 版”。
+           - 只要游戏名称、版本（标准/豪华）匹配，分发渠道的描述差异可以忽略。
+        输出要求：严格按下面两行格式输出，禁止任何前言和总结。
         判定: [结果]
-        理由: [简短的中文理由]
+        理由: [原因]
         """
         
         # 直接调用底层接口获取原始文本，以便解析理由
+        # 直接调用底层接口获取原始文本
         raw_response = self.ai._call_with_retry(audit_prompt)
         
+        # 1. 设定初始值
         audit_result = "ERROR"
         audit_reason = "AI 响应解析失败"
         
         if raw_response:
-            # 提取判定词
-            res_match = re.search(r'判定:\s*(\w+)', raw_response, re.I)
-            audit_result = res_match.group(1).upper() if res_match else "ERROR"
-            # 提取理由
-            reason_match = re.search(r'理由:\s*(.*)', raw_response)
-            audit_reason = reason_match.group(1).strip() if reason_match else "未给出具体理由"
-
+            # 2. 尝试提取判定词（兼容中英文冒号）
+            res_match = re.search(r'判定[:：]\s*(\w+)', raw_response, re.I)
+            
+            if res_match:
+                # 解析成功：更新结果
+                audit_result = res_match.group(1).upper()
+                # 提取理由
+                reason_match = re.search(r'理由[:：]\s*(.*)', raw_response)
+                audit_reason = reason_match.group(1).strip() if reason_match else "已通过审计"
+                # 💡 成功时打印真实的结论
+                print(f"🧠 [AI 审计] 结论: {audit_result} | 理由: {audit_reason}")
+            else:
+                # 💡 解析失败：打印原始响应，这是最关键的调试信息！
+                print(f"\n{'!'*40}")
+                print(f"⚠️ AI 格式错误，无法解析！原始文本如下：\n{raw_response}")
+                print(f"{'!'*40}\n")
+        else:
+            print("🚨 AI 未能返回任何响应")
+            
         # --- 5. 结果核算与状态分流 ---
         status_text, profit_str, current_roi = "🛑 审核未通过", "---", "0%"
         

@@ -87,3 +87,5 @@ SteamPY-Scout/steampy_data/
 *.log
 mission_log.txt
 *_log.txt
+
+arbitrage_history.json

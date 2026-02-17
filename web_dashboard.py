@@ -60,7 +60,7 @@ def load_history():
     return []
 
 # 在 AGENT_STATE 初始化时调用
-AGENT_STATE["history"] = load_history()
+AGENT_STATE["history"] = [] # load_history()
 
 @app.post("/feishu/webhook")
 async def feishu_bot_handler(request: Request):
@@ -94,7 +94,18 @@ async def feishu_bot_handler(request: Request):
             # 同时去掉可能带进来的 "hi" 或 "@" 符号
             query_game = re.sub(r'@_user_\w+|@\S+', '', clean_step1)
             query_game = query_game.replace('hi', '').strip()
-            
+            # 💡 [新增]：识别“上架”指令格式，例如：上架 街霸6|AAAA-BBBB-CCCC|88
+            # 加在这里可以确保指令不被当作普通游戏名去杉果搜索
+            if query_game.startswith("上架") or query_game.lower().startswith("post"):
+                post_arg = re.sub(r'^(上架|post)\s*', '', query_game, flags=re.IGNORECASE).strip()
+                if "|" in post_arg:
+                    print(f"🚀 [飞书指令] 触发远程上架流程: {post_arg}")
+                    if global_commander:
+                        # 异步调用 steampy 的自动上架流程
+                        asyncio.create_task(global_commander.steampy.action_post_flow(post_arg))
+                        # 及时给飞书反馈已收到指令
+                        await global_commander.notifier.send_text(f"📥 已收到上架请求：\n{post_arg}\n🛰️ 正在调动卫星执行...")
+                    return {"code": 0}
             # 后台打印，让你一眼看到有没有提取成功
             print(f"\n{'='*30}")
             print(f"📩 [飞书信号原始文本]: '{raw_text}'")
@@ -113,7 +124,7 @@ async def feishu_bot_handler(request: Request):
                     if sk_results:
                         # 💡 只有这一行！内部自动完成比价、去重、推送到 Web 界面
                         await global_commander.process_arbitrage_item(sk_results[0], is_manual=True)
-                        save_history() # 存档
+                        # save_history() # 存档
                     
                     # 💡 注意：如果你还需要给飞书发文字回复，可以单独调用 analyze_arbitrage
                     # 但为了不重复查价，建议以后把文字报告也收束到 process_arbitrage_item 里
@@ -180,12 +191,28 @@ async def continuous_cruise():
                         logger.error(f"⚠️ 杉果扫描异常: {e}")
                         continue
                     for item in sk_results:
-                        # 同样调用统一方法
-                        await global_commander.process_arbitrage_item(item)
-                        total_scanned_this_round += 1  # 💡 补上这一行计数
-                        # 存盘还是留在网页端做
-                        save_history()
-
+                        # 💡 关键：接收 process_arbitrage_item 返回的 log 字典
+                        log_entry = await global_commander.process_arbitrage_item(item)
+                        total_scanned_this_round += 1  
+                        
+                        # 🚨 [新增计数逻辑]
+                        if log_entry:
+                            # 1. 只要 py_price 有值且不是 ---，说明在 SteamPy 成功对齐了
+                            if log_entry.get("py_price") and "¥" in str(log_entry.get("py_price")):
+                                match_count += 1
+                            
+                            # 2. 如果状态包含“成功”，说明通过了 AI 审计且利润达标
+                            if "成功" in log_entry.get("status", ""):
+                                profit_count += 1
+                                # 提取利润数字并累加
+                                try:
+                                    # 剥离 ¥ 符号提取数值
+                                    p_str = log_entry.get("profit", "0").replace("¥", "")
+                                    total_profit += float(p_str)
+                                except:
+                                    pass
+                # 3. 🚨 简报发送逻辑 (此时变量已完成累加)
+                AGENT_STATE["scanned_count"] += 1 # 每次巡航完成，总进度+1
                 # 3. 🚨 重点：在这里插入简报发送逻辑 (for 循环结束后)
                 end_time = datetime.datetime.now()
                 duration = (end_time - start_time).seconds

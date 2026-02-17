@@ -99,60 +99,104 @@ class SteamPyMonitor(SteamPyScout):
 
     async def action_search(self, name):
         """
-        [重构版] 简单直接的搜索逻辑：废除变体干扰，信任主控审计
+        [稳定 Work 版] 搜索内核：采用多轮变体重试 + 权重评分决策
         """
         import re
+        import asyncio
         
-        # 1. 确保在列表页
+        # 1. 确保在列表页并初始化
         await self.action_goto()
         
-        # 2. 准备最核心的搜索词：原名 + 简单的标点纠正
-        # 💡 不再搞多种变体循环，只搜最稳的那个
-        clean_variant = re.sub(r'[：:，,。\.·・\-]', ' ', name).strip()
-        print(f"📡 [SteamPy] 正在执行硬核搜索: [{clean_variant}]")
+        # 2. 准备搜索变体：应对 SteamPy 数据库命名不一的问题
+        search_variants = [
+            name,                                   # 原名
+            re.sub(r'[：:，,。\.·・\-]', ' ', name),   # 标点变空格
+            re.sub(r'[：:，,。\.·・\-]', '', name)     # 标点全删（如黑神话悟空）
+        ]
+        unique_variants = list(dict.fromkeys(search_variants))
         
+        cards = []
+        search_input = None
+        
+        # 3. 循环尝试每一个变体，直到搜到结果
+        for variant in unique_variants:
+            variant = " ".join(variant.split()).strip() # 清理多余空格
+            if not variant: continue
+            
+            print(f"📡 [SteamPy] 尝试搜索变体: [{variant}]")
+            
+            try:
+                if not search_input:
+                    search_input = await self.page.wait_for_selector(".ivu-input", timeout=5000)
+                
+                # 强力清空并填入：点击 -> 全选 -> 退格 -> 模拟输入
+                await search_input.click()
+                await self.page.keyboard.press("Control+A")
+                await self.page.keyboard.press("Backspace")
+                await search_input.type(variant, delay=50) # type 比 fill 更能触发 Vue 事件
+                await self.page.keyboard.press("Enter")
+                
+                # 给 Vue 渲染留出充足的缓冲（原来的 2.5s 非常稳）
+                await asyncio.sleep(2.5) 
+                
+                cards = await self.page.query_selector_all(".gameblock")
+                if cards:
+                    print(f"✅ 变体 [{variant}] 命中 {len(cards)} 个结果！")
+                    break
+            except Exception as e:
+                print(f"🚨 搜索变体 [{variant}] 异常: {e}")
+                continue
+
+        if not cards:
+            print(f"❌ 搜索结果为空，尝试了所有变体仍未找到: {name}")
+            return False
+
+        # 4. 权重评分系统：在结果中筛选出最像“本体”的一个
+        scored_results = []
+        for card in cards:
+            name_el = await card.query_selector(".gameName")
+            if name_el:
+                actual_name = (await name_el.text_content()).strip()
+                score = 0
+                
+                # A. 基础分：包含即有分，全等满分
+                if actual_name == name: 
+                    score += 100
+                elif name.lower() in actual_name.lower() or actual_name.lower() in name.lower(): 
+                    score += 50
+                
+                # B. 负向惩罚：自动排除 DLC、原声带、合集等干扰项
+                interference_tags = {
+                    "DLC": 80, "扩展": 80, "原声": 90, "SOUNDTRACK": 90,
+                    "BUNDLE": 40, "合集": 40, "测试": 90, "体验版": 90
+                }
+                for tag, penalty in interference_tags.items():
+                    if tag.upper() in actual_name.upper():
+                        score -= penalty
+                
+                scored_results.append({"score": score, "card": card, "name": actual_name})
+
+        # 5. 决策与跳转：只要评分最高者 > 0 就点进去，交给 AI 审计最终版本
+        scored_results.sort(key=lambda x: x["score"], reverse=True)
+
+        if scored_results and scored_results[0]["score"] > 0:
+            target = scored_results[0]
+            print(f"🎯 选定最佳匹配: {target['name']} (得分: {target['score']})")
+            best_match = target["card"]
+        else:
+            print(f"⚠️ 搜索结果中无高分匹配目标 (最高分: {scored_results[0]['score'] if scored_results else 'N/A'})")
+            return False
+
         try:
-            # 定位并填入搜索框
-            search_input = await self.page.wait_for_selector(".ivu-input", timeout=5000)
-            await search_input.fill("") 
-            await search_input.fill(clean_variant)
-            await self.page.keyboard.press("Enter")
-            
-            # 给 Vue 渲染留出缓冲 (保持原有的 2.5s 确保加载)
-            await asyncio.sleep(2.5) 
-            
-            cards = await self.page.query_selector_all(".gameblock")
-            if not cards:
-                print(f"❌ SteamPy 搜索结果为空: {clean_variant}")
-                return False
-
-            # 3. 简单的初筛逻辑 (不再使用复杂的评分)
-            best_match = None
-            for card in cards:
-                name_el = await card.query_selector(".gameName")
-                if name_el:
-                    actual_name = (await name_el.text_content()).strip()
-                    
-                    # 💡 只要包含了核心词（比如“耻辱2”在结果里），就直接冲！
-                    # 后续版本对不对，交给 Commander 里的 AI 审计去头疼
-                    if clean_variant.lower() in actual_name.lower() or actual_name.lower() in clean_variant.lower():
-                        print(f"✅ 找到语义匹配目标: {actual_name}")
-                        best_match = card
-                        break # 抓到第一个匹配的就走，效率最高
-
-            if not best_match:
-                print(f"⚠️ 列表页无语义关联目标，放弃跳转。")
-                return False
-
-            # 4. 执行跳转
             await best_match.click()
-            # 增加对详情页特有元素的等待，确保跳转成功
+            # 增加对详情页关键元素的等待
             await self.page.wait_for_selector(".game-title, span:has-text('返回')", timeout=10000)
             return True
-
         except Exception as e:
-            print(f"🚨 SteamPy 搜索/跳转异常: {e}")
+            print(f"🚨 详情页进入失败: {e}")
             return False
+
+
 
     async def action_scan(self):
         print("\n[COMMAND] 正在执行深度扫描（含平台比价）...")
@@ -407,11 +451,13 @@ class SteamPyMonitor(SteamPyScout):
         except Exception as e:
             print(f"🚨 [扫描异常]: {e}")
             return []
-    async def action_fill_post_form(self, game_name, key_code, price):
+        
+    async def action_fill_post_form(self, game_name, key_code, price, auto_confirm=False):
         """
         处理三阶段填表：搜索 -> 选定版本 -> 录入 Key/价格 -> 提交
+        :param auto_confirm: 是否开启自动模式。如果为 True，将跳过人工输入确认。
         """
-        print(f"🚀 [动作] 启动全自动上架：{game_name}")
+        print(f"🚀 [动作] 启动上架流程：{game_name} (自动模式: {auto_confirm})")
         
         try:
             # 1. 触发弹窗并锁定活跃层
@@ -455,29 +501,39 @@ class SteamPyMonitor(SteamPyScout):
             await price_input.fill(str(price))
             print(f"💰 Key 与价格设定完成: {price}")
 
-            # 5. 人工干预：第一次确认（决定是否点击“提交”）
-            print("\n" + "⚠️ " * 10)
-            print("表单已填好！请检查浏览器。")
-            print(f"游戏: {game_name} | 价格: {price} | Key: {key_code}")
-            print("输入 'yes' 确认【提交并处理二次确认】，输入其他取消。")
-            print("⚠️ " * 10 + "\n")
+            # 5. 提交逻辑分流
+            should_submit = False
 
-            user_input = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
-            
-            if "yes" in user_input.lower():
+            if auto_confirm:
+                # 💡 自动模式：直接判定为需要提交
+                print("🤖 [自动模式] 正在跳过人工确认，执行自动提交...")
+                should_submit = True
+            else:
+                # 💡 人工模式：保留原有的终端输入提示
+                print("\n" + "⚠️ " * 10)
+                print("表单已填好！请检查浏览器。")
+                print(f"游戏: {game_name} | 价格: {price} | Key: {key_code}")
+                print("输入 'yes' 确认【提交并处理二次确认】，输入其他取消。")
+                print("⚠️ " * 10 + "\n")
+
+                user_input = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
+                if "yes" in user_input.lower():
+                    should_submit = True
+
+            # 执行提交动作
+            if should_submit:
                 # --- A. 点击初步提交按钮（黑色） ---
                 print("🚀 正在执行初步提交...")
                 submit_btn = await active_modal.wait_for_selector("button.ivu-btn-error")
                 await submit_btn.click()
                 
                 # --- B. 处理“注意！！”二次确认弹窗 ---
-                await asyncio.sleep(1.5) # 等待新弹窗动画
+                await asyncio.sleep(2.0) # 等待新弹窗动画
                 print("🔍 正在捕捉终极确认弹窗...")
                 
                 all_modals_v2 = await self.page.query_selector_all(".ivu-modal-content")
                 final_confirm_modal = None
                 
-                # 再次利用倒序法锁定最上层的“注意！！”弹窗
                 for modal in reversed(all_modals_v2):
                     modal_text = await modal.inner_text()
                     if "注意！！" in modal_text and await modal.is_visible():
@@ -486,28 +542,44 @@ class SteamPyMonitor(SteamPyScout):
                 
                 if final_confirm_modal:
                     print("⚠️ 发现安全警告弹窗，正在执行【确认出售】...")
-                    # 锁定蓝色背景的大按钮
                     confirm_btn = await final_confirm_modal.wait_for_selector("button.ivu-btn-info")
                     await confirm_btn.click()
                     
                     # --- C. 结果检查 ---
                     await asyncio.sleep(2)
-                    # 检查是否有验证码或成功提示
                     captcha = await self.page.query_selector(".captcha-popup")
                     if captcha:
                         print("🛡️ 触发验证码！请在浏览器手动完成滑动。")
                     else:
-                        print("✨ 上架流程已完整结束！请检查看板列表。")
+                        print("✨ 上架流程已完整结束！")
                 else:
-                    print("🚨 未能触发二次确认弹窗，请手动检查浏览器。")
+                    print("🚨 未能触发二次确认弹窗，可能上架受限。")
             else:
-                print("❌ 指令撤回，已取消提交。")
+                print("❌ 已取消提交。")
             
             return True
 
         except Exception as e:
             print(f"🚨 [上架流程崩溃]: {e}")
             return False
+        
+    async def action_post_flow(self, arg):
+        """
+        处理远程下达的 post 指令：解析参数并执行上架
+        """
+        try:
+            game_name, key_code, price = arg.split("|")
+            print(f"🛰️ [执行中] 目标: {game_name} | 价格: {price}")
+            
+            # 1. 确保在卖家中心
+            await self.action_goto_seller_post()
+            
+            # 2. 执行填表逻辑 (这里调用你已有的 action_fill_post_form)
+            # 注意：需将 action_fill_post_form 里的 input() 逻辑在全自动模式下跳过
+            await self.action_fill_post_form(game_name, key_code, price, auto_confirm=True)
+            
+        except Exception as e:
+            print(f"🚨 上架指令执行失败: {e}")
         
 if __name__ == "__main__":
     commander = SteamPyMonitor(headless=True)
