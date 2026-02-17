@@ -61,12 +61,10 @@ class ArbitrageCommander:
             return False
     
     async def update_result(self, log_entry):
-        """统一结果分发中心"""
-        if self.agent_state:
-            # 1. 将新记录插入到列表最前端（确保 Dashboard 顶部永远是最新的）
+        if self.agent_state is not None:
+            # 💡 强制打印，确保 Commander 确实把数据发过来了
+            print(f"📡 [DATA_SYNC] 正在将 {log_entry['name']} 写入 Web 状态...")
             self.agent_state["history"].insert(0, log_entry)
-            
-            # 2. 设置一个内存上限（例如 100 条），防止本次巡航时间过长撑爆页面
             if len(self.agent_state["history"]) > 100:
                 self.agent_state["history"] = self.agent_state["history"][:100]
         # if self.agent_state:
@@ -83,22 +81,27 @@ class ArbitrageCommander:
         await self.steampy.stop()
 
     async def analyze_arbitrage(self, game_name):
-        """专项点杀：直接复用加工中心的成果"""
+        """专项点杀：适配 Top 5 展示"""
         clean_name = get_search_query(game_name) 
         sk_results = await self.sonkwo.get_search_results(keyword=clean_name)
         
         if not sk_results: return "❌ 杉果未找到该商品"
 
-        # 💡 这里直接取搜索结果的第一条（因为现在是精准搜索了）
+        # 💡 这里会自动调用 process_arbitrage_item，内部已经处理了 Top5 逻辑
         log_entry = await self.process_arbitrage_item(sk_results[0], is_manual=True)
+
+        if not log_entry: return "❌ 变现端未搜到匹配结果"
 
         report = (
             f"🔍 [侦察详情]\n🔹 杉果原名: {log_entry['name']}\n"
             f"⚖️ 判定结果: {log_entry['status']}\n"
             f"--------------------------\n"
-            f"🍎 成本: {log_entry['sk_price']} | 🍏 变现: {log_entry['py_price']}\n"
-            f"💵 净利: {log_entry['profit']} | 📈 ROI: {log_entry['roi']}\n"
-            f"🔗 详情直达: \n{log_entry['url']}" # 💡 这里的 URL 必须来自 log_entry
+            f"🍎 成本: {log_entry['sk_price']}\n"
+            f"🍏 SteamPy (Top5): {log_entry['py_price']}\n" 
+            f"💵 预计净利: {log_entry['profit']} | 📈 ROI: {log_entry['roi']}\n"
+            f"📝 审计理由: {log_entry['reason']}\n"
+            f"--------------------------\n"
+            f"🔗 详情直达: \n{log_entry['url']}"
         )
         return report
 
@@ -125,17 +128,28 @@ class ArbitrageCommander:
         print(f"🔍 [COMMANDER] 原始名: [{sk_name}] -> 降噪搜索词: [{search_keyword}]")
         # --- 3. 跨平台侦察 (SteamPy 撞库) ---
         py_data = None
+        # --- 3. 跨平台侦察 (SteamPy 撞库) ---
         async with self.lock:
             try:
-                py_data = await self.steampy.get_game_market_price_with_name(search_keyword)
+                # 💡 核心修复：直接获取结果并判定
+                res = await self.steampy.get_game_market_price_with_name(search_keyword)
+                
+                if not res or len(res) < 3:
+                    print(f"⚠️ [COMMANDER] {search_keyword} 变现端无匹配或格式错误")
+                    return None
+                
+                # 解包三元组
+                py_price, py_match_name, top5_list = res
+                
             except Exception as e:
                 print(f"🚨 SteamPy 搜索链路故障: {e}")
+                return None
 
-        if not py_data:
-            return None
-
-        py_price, py_match_name = py_data
-        print(f"🎯 [COMMANDER] 进货端: {sk_name} (¥{sk_price}) | 变现端: {py_match_name} (¥{py_price})")
+        # 💡 修改点 2：将 Top 5 价格列表格式化
+        py_price_display = " | ".join([f"¥{p}" for p in top5_list]) if top5_list else f"¥{py_price}"
+        
+        print(f"🎯 [COMMANDER] 进货端: {sk_name} (¥{sk_price}) | 变现端(Top5): {py_price_display}")        # py_price, py_match_name = py_data
+        # print(f"🎯 [COMMANDER] 进货端: {sk_name} (¥{sk_price}) | 变现端: {py_match_name} (¥{py_price})")
         # --- 4. AI 语义审计（判定结果 + 理由捕获） ---
         audit_prompt = f"""
         请对比以下两个游戏商品，判断它们是否为【同一个游戏】且【版本价值对等】。
@@ -207,7 +221,7 @@ class ArbitrageCommander:
             "time": datetime.datetime.now().strftime("%H:%M:%S"),
             "name": f"🛰️(点杀) {sk_name}" if is_manual else sk_name,
             "sk_price": f"¥{sk_price}",
-            "py_price": f"¥{py_price}",
+            "py_price": f"¥{py_price_display}",
             "profit": profit_str,
             "status": status_text,
             "url": sk_item.get('url', 'https://www.sonkwo.cn'),

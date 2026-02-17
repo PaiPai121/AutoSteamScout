@@ -281,34 +281,36 @@ async def check_game(name: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard():
-    # 构造更丰富的表格行
+    # --- 1. 历史数据渲染核心逻辑 ---
     rows = ""
-    for h in AGENT_STATE["history"]:
-        h_name = h.get('name', '未知商品')
-        h_sk_price = h.get('sk_price', '---')
-        h_py_price = h.get('py_price', '---')
-        h_profit = h.get('profit', '---')
-        h_status = h.get('status', '未知状态')
-        h_reason = h.get('reason', '未记录理由')
-        h_roi = h.get('roi', '0%')
-
-        is_profitable = "✅" in h_status and "¥" in h_profit and "-" not in h_profit
-        color = "#3fb950" if is_profitable else "#f85149"
-        
-        rows += f"""
-        <tr>
-            <td>{h.get('time', '--:--:--')}</td>
-            <td style="font-weight:bold;">{h_name}</td>
-            <td>{h_sk_price}</td>
-            <td>{h_py_price}</td>
-            <td style='color:{color}; font-weight:bold;'>{h_profit} <small>({h_roi})</small></td>
-            <td><span style="font-size:12px; opacity:0.8;">{h_status}</span><br><small style="color:#8b949e;">原因: {h_reason}</small></td>
-            <td><a href="{h.get('url','#')}" target="_blank" style="color:#ffcc00;text-decoration:none;">🛒 进货</a></td>
-        </tr>
-        """
+    history_list = AGENT_STATE.get("history", [])
     
-    dot_color = "#3fb950" if AGENT_STATE["is_running"] else "#f85149"
+    if not history_list:
+        # 初始无数据时的占位行
+        rows = "<tr><td colspan='7' style='text-align:center; padding:50px; color:#8b949e;'>🛰️ 侦察机巡航中，暂未发现利润目标...</td></tr>"
+    else:
+        for h in history_list:
+            h_status = h.get('status', '未知状态')
+            # 判定盈利且审计通过的逻辑
+            is_profitable = "✅" in h_status
+            color = "#3fb950" if is_profitable else "#f85149"
+            
+            rows += f"""
+            <tr>
+                <td>{h.get('time', '--:--:--')}</td>
+                <td style="font-weight:bold;">{h.get('name', '未知商品')}</td>
+                <td>{h.get('sk_price', '---')}</td>
+                <td style="color:#58a6ff; font-family:monospace; font-size:12px;">{h.get('py_price', '---')}</td>
+                <td style='color:{color}; font-weight:bold;'>{h.get('profit', '---')} <small>({h.get('roi','0%')})</small></td>
+                <td><span style="font-size:12px; opacity:0.8;">{h_status}</span><br><small style="color:#8b949e;">原因: {h.get('reason','无')}</small></td>
+                <td><a href="{h.get('url','#')}" target="_blank" style="color:#ffcc00; text-decoration:none;">🛒 进货</a></td>
+            </tr>
+            """
     
+    # 获取运行状态点颜色
+    dot_color = "#3fb950" if AGENT_STATE.get("is_running") else "#f85149"
+    
+    # --- 2. 完整 HTML/CSS/JS 全量恢复 ---
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -322,33 +324,45 @@ async def get_dashboard():
             .panel {{ background: #161b22; border: 1px solid var(--border); padding:20px; border-radius:8px; margin-bottom:20px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }}
             .status-bar {{ display:flex; align-items:center; gap:15px; margin-bottom:10px; }}
             .dot {{ height:12px; width:12px; background:{dot_color}; border-radius:50%; box-shadow: 0 0 8px {dot_color}; }}
-            table {{ width:100%; border-collapse:separate; border-spacing:0; margin-top:10px; }}
-            th {{ background: #21262d; padding:12px; text-align:left; border-bottom: 2px solid var(--main-gold); }}
-            td {{ padding:12px; border-bottom:1px solid var(--border); }}
+            
+            /* 表格布局调整：为 Top 5 价格留出专用宽度 */
+            table {{ width:100%; border-collapse:separate; border-spacing:0; margin-top:10px; table-layout: fixed; }}
+            th {{ background: #21262d; padding:12px; text-align:left; border-bottom: 2px solid var(--main-gold); color: var(--main-gold); }}
+            td {{ padding:12px; border-bottom:1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+            
+            /* 第四列（SteamPy Top5）锁定宽度 */
+            td:nth-child(4) {{ width: 220px; }}
+
             tr:hover {{ background: #21262d; }}
+            
+            /* 搜索框与交互组件 */
             .search-box {{ display:flex; gap:10px; margin-top:15px; }}
             input {{ background:#0d1117; color:#fff; border:1px solid var(--border); padding:10px; border-radius:4px; flex-grow:1; outline:none; }}
             input:focus {{ border-color: var(--main-gold); }}
-            button {{ background:var(--main-gold); color:#000; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold; }}
-            #resultArea {{ background:#000; color:#0ff; padding:15px; border-radius:4px; margin-top:15px; border-left:4px solid var(--main-gold); display:none; white-space: pre-wrap; font-family: monospace; }}
+            button {{ background:var(--main-gold); color:#000; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold; transition: 0.2s; }}
+            button:hover {{ opacity: 0.8; }}
+            button:disabled {{ background: #444; color: #888; cursor: not-allowed; }}
+            
+            /* AI 审计结论实时反馈区 */
+            #resultArea {{ background:#000; color:#0ff; padding:15px; border-radius:4px; margin-top:15px; border-left:4px solid var(--main-gold); display:none; white-space: pre-wrap; font-family: monospace; font-size: 13px; }}
         </style>
     </head>
     <body>
         <div class="panel">
             <div class="status-bar">
                 <div class="dot"></div>
-                <h2 style="margin:0; color:var(--main-gold);">🛰️ SENTINEL V2.5 AI-ENHANCED</h2>
+                <h2 style="margin:0; color:var(--main-gold);">🛰️ SENTINEL V2.5 战略指挥中心</h2>
             </div>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-                <div>📍 当前任务: <span style="color:#fff;">{AGENT_STATE['current_mission']}</span></div>
-                <div>🎯 目标锁定: <span style="color:#fff;">{AGENT_STATE['active_game']}</span></div>
+                <div>📍 当前任务: <span style="color:#fff;">{AGENT_STATE.get('current_mission', '待命')}</span></div>
+                <div>📊 巡航统计: <span style="color:#fff;">第 {AGENT_STATE.get('scanned_count', 0)} 次扫描</span></div>
             </div>
         </div>
 
         <div class="panel">
-            <h3>🔍 深度侦察模式 (AI 分析)</h3>
+            <h3>🔍 深度侦察模式 (单点点杀)</h3>
             <div class="search-box">
-                <input type="text" id="gameInput" placeholder="输入游戏名称（支持模糊搜索，AI 自动对齐版本）...">
+                <input type="text" id="gameInput" placeholder="输入游戏关键词，母舰将实时同步调取 SteamPy 前五名报价并运行 AI 审计...">
                 <button onclick="checkProfit()">开始侦察</button>
             </div>
             <pre id="resultArea"></pre>
@@ -357,7 +371,15 @@ async def get_dashboard():
         <div class="panel" style="padding:0; overflow:hidden;">
             <table>
                 <thead>
-                    <tr><th>时间</th><th>游戏实体</th><th>杉果成本</th><th>SteamPy</th><th>预期利润(ROI)</th><th>AI 状态</th><th>操作</th></tr>
+                    <tr>
+                        <th style="width:80px;">时间</th>
+                        <th>游戏实体</th>
+                        <th style="width:90px;">成本</th>
+                        <th>SteamPy (Top5)</th>
+                        <th style="width:140px;">预期利润</th>
+                        <th>AI 审计结论</th>
+                        <th style="width:70px;">操作</th>
+                    </tr>
                 </thead>
                 <tbody>{rows}</tbody>
             </table>
@@ -370,17 +392,17 @@ async def get_dashboard():
             const name = document.getElementById('gameInput').value;
             if(!name) return;
             
-            btn.innerText = '🛰️ 调动卫星中...';
+            btn.innerText = '🛰️ 正在调动卫星...';
             btn.disabled = true;
             resArea.style.display = 'block';
-            resArea.innerText = '正在调取多平台接口并运行 AI 版本校验模型...';
+            resArea.innerText = '正在调取多平台接口并启动 AI 版本匹配算法，请稍候...';
             
             try {{
                 const res = await fetch(`/check?name=${{encodeURIComponent(name)}}`);
                 const data = await res.json();
                 resArea.innerText = data.report;
             }} catch(e) {{
-                resArea.innerText = '🚨 通信中断，请检查服务器连接';
+                resArea.innerText = '🚨 信号中断：无法连接至主服务器。';
             }} finally {{
                 btn.innerText = '开始侦察';
                 btn.disabled = false;

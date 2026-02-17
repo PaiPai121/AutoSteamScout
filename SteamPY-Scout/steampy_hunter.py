@@ -325,6 +325,17 @@ class SteamPyMonitor(SteamPyScout):
                     print("📋 [控制台] 正在下达指令：扫描当前库存...")
                     # 直接调用刚才写好的扫描函数
                     await self.action_scan_inventory()
+                elif cmd == "test":
+                    if arg:
+                        print(f"🔬 [测试接口] 正在模拟巡航调用: {arg}...")
+                        res = await self.get_game_market_price_with_name(arg)
+                        if res and len(res) == 3:
+                            p, n, t5 = res
+                            print(f"✅ 接口返回正常！\n🔹 最低价: {p}\n🔹 商品名: {n}\n🔹 价格阵列: {t5}")
+                        else:
+                            print(f"❌ 接口返回异常或格式不对: {res}")
+                    else:
+                        print("⚠️ 用法: test 游戏名")
                 print("\n" + "-"*40)
             except KeyboardInterrupt:
                 break
@@ -332,30 +343,40 @@ class SteamPyMonitor(SteamPyScout):
 
     async def get_game_market_price_with_name(self, name):
         """
-        相比之前的版本，这个函数会返回 (价格, 实际搜到的商品名)
+        [巡航核心] 这里的逻辑必须和手动 scan 成功的逻辑完全一致
         """
         try:
             success = await self.action_search(name)
-            if not success:
-                return None
+            if not success: return None
 
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(2.0) # 确保表格加载
             
-            # 获取名字
+            # 1. 获取名字
             name_el = await self.page.query_selector(".gameName")
             actual_name = (await name_el.text_content()).strip() if name_el else "未知"
 
-            # 获取价格
-            price_box = await self.page.query_selector(".f50-rem")
-            if price_box:
-                price_str = await price_box.text_content()
-                price_match = re.search(r"\d+\.?\d*", price_str)
-                if price_match:
-                    return float(price_match.group()), actual_name
+            # 2. 💡 搬运 scan 成功的逻辑：抓取前 5 行价格
+            rows = await self.page.query_selector_all(".ivu-table-tbody tr.ivu-table-row")
+            top5_prices = []
+            
+            for row in rows[:5]:
+                cells = await row.query_selector_all("td")
+                if len(cells) >= 5:
+                    p_text = (await cells[4].text_content()).strip().replace("￥", "").strip()
+                    # 正则提取数字，防止 ¥ 符号干扰
+                    p_match = re.search(r"\d+\.?\d*", p_text)
+                    if p_match:
+                        top5_prices.append(float(p_match.group()))
+            
+            if top5_prices:
+                # 返回：最低价, 实际名, 价格阵列
+                return top5_prices[0], actual_name, top5_prices
             
             return None
-        except:
+        except Exception as e:
+            print(f"🚨 巡航抓取异常: {e}")
             return None
+        
     async def action_goto_seller_post(self):
         """
         导航至卖家中心-CDK看板（查账、看库存的终点）
