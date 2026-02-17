@@ -62,32 +62,53 @@ def load_history():
 # 在 AGENT_STATE 初始化时调用
 AGENT_STATE["history"] = [] # load_history()
 
-def build_post_card(game_name=""): # 给个默认值，防止报错
+def build_post_card(game_name=""):
     return {
-        "config": {"wide_screen_mode": True},
+        "config": {
+            "wide_screen_mode": True
+        },
         "header": {
             "title": {"tag": "plain_text", "content": "🚀 SENTINEL 上架指挥部"},
             "template": "orange"
         },
         "elements": [
             {
-                "tag": "input",
-                "placeholder": {"tag": "plain_text", "content": "例如：街霸6"},
-                "name": "game_name_input", # 💡 新增：游戏名输入框
-                "label": {"tag": "plain_text", "content": "🎮 游戏名称"},
-                "default_value": game_name # 如果你发了名字就带入，没发就空着
+                "tag": "div",
+                "text": {"tag": "plain_text", "content": "💬 请完善以下信息以执行 SteamPy 自动上架指令："}
             },
             {
-                "tag": "input",
-                "placeholder": {"tag": "plain_text", "content": "请粘贴 CDKEY..."},
-                "name": "cdkey_input",
-                "label": {"tag": "plain_text", "content": "🔑 激活码 (Key)"}
-            },
-            {
-                "tag": "input",
-                "placeholder": {"tag": "plain_text", "content": "例如: 88.5"},
-                "name": "price_input",
-                "label": {"tag": "plain_text", "content": "💰 上架价格 (元)"}
+                "tag": "column_set",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "weight": 1,
+                        "elements": [
+                            {
+                                "tag": "input",
+                                "name": "game_name_input",
+                                "required": True, # 💡 尝试开启必填校验
+                                "default_value": game_name,
+                                "label": {"tag": "plain_text", "content": "🎮 游戏名称"},
+                                "placeholder": {"tag": "plain_text", "content": "例如：街霸 6"}
+                            },
+                            {
+                                "tag": "input",
+                                "name": "cdkey_input",
+                                "required": True, # 💡 尝试开启必填校验
+                                "label": {"tag": "plain_text", "content": "🔑 激活码 (Key)"},
+                                "placeholder": {"tag": "plain_text", "content": "请输入 AAAAA-BBBBB 格式"}
+                            },
+                            {
+                                "tag": "input",
+                                "name": "price_input",
+                                "required": True, # 💡 尝试开启必填校验
+                                "label": {"tag": "plain_text", "content": "💰 上架价格 (元)"},
+                                "placeholder": {"tag": "plain_text", "content": "例如：88.5"}
+                            }
+                        ]
+                    }
+                ]
             },
             {
                 "tag": "action",
@@ -96,14 +117,12 @@ def build_post_card(game_name=""): # 给个默认值，防止报错
                         "tag": "button",
                         "text": {"tag": "plain_text", "content": "确认发布至 SteamPy"},
                         "type": "primary",
-                        "value": {"action": "confirm_post"} # 💡 游戏名改从输入框拿，这里不需要传了
+                        "value": {"action": "confirm_post"}
                     }
                 ]
             }
         ]
     }
-
-
 
 
 @app.post("/feishu/webhook")
@@ -137,7 +156,13 @@ async def feishu_bot_handler(request: Request):
             key = form_vals.get("cdkey_input")
             price = form_vals.get("price_input")
             print(f"📝 提取表单数据: 游戏={game}, 价格={price}, Key={'已拿到' if key else '缺失'}")
-
+            # 🚨 [关键拦截]：如果关键数据为空，直接弹窗报错而不执行后续逻辑
+            if not game or not key or not price:
+                print("⚠️ [拦截] 用户提交了空白表单")
+                return {
+                    "toast": {"type": "error", "content": "❌ 请完整填写所有信息后再提交！"},
+                    # 保持卡片不变，不进入“处理中”状态
+                }
             # 启动后台任务
             async def feedback_task():
                 success = await global_commander.steampy.action_post_flow(f"{game}|{key}|{price}")
@@ -192,11 +217,12 @@ async def feishu_bot_handler(request: Request):
                 
                 # 模式 B：通用上架卡片（包含只有“上架”二字的情况）
                 else:
-                    print(f"🎴 [飞书指令] 呼叫通用上架卡片")
+                    print(f"🎴 [方案 A] 准备异步推送卡片，目标内容: {target_content}")
                     if global_commander:
                         # 将提取到的内容作为默认值传给卡片输入框
                         card_payload = build_post_card(target_content)
                         asyncio.create_task(global_commander.notifier.send_card(card_payload))
+                        print(f"✅ 任务已挂载至后台，正在响应飞书 ACK信号")
                     return {"code": 0} # 👈 必须 return，防止下方的杉果查询逻辑被触发
             # 后台打印，让你一眼看到有没有提取成功
             print(f"\n{'='*30}")
@@ -267,7 +293,19 @@ async def continuous_cruise():
                     logger.error(f"⚠️ 杉果扫描局部超时/异常: {e}")
                     await asyncio.sleep(30)
                     continue # 跳过本次循环，不重启引擎
-                search_tasks = [] # ["", "steam", "act", "rpg"] # 通过不同分类词带出更多结果
+                # search_tasks = ["", "steam", "act", "rpg"] # 通过不同分类词带出更多结果
+                search_tasks = [
+                        "",           # 核心：全场史低/热门
+                        "steam",      # 重点：确保是 Steam 激活码（过滤掉育碧/其他平台）
+                        "action",     # 分类：动作类（受众广，变现快）
+                        "rpg",        # 分类：角色扮演（价格稳）
+                        "strategy",   # 分类：策略类
+                        "adventure",  # 分类：冒险类
+                        "indie",      # 蓝海：独立游戏（经常有高 ROI 的小目标）
+                        "ubisoft",    # 扩展：如果你也做育碧转单，可以开启
+                        "capcom",     # 厂商：卡普空（经常有大折扣）
+                        "bandai"      # 厂商：万代南梦宫
+                    ]
                 
                 for task_keyword in search_tasks:
                     AGENT_STATE["current_mission"] = f"正在扫描分类: {task_keyword or '全场'}"
@@ -409,7 +447,6 @@ async def get_dashboard():
     <head>
         <title>SENTINEL V2 | 战略指挥中心</title>
         <meta charset="utf-8">
-        <meta http-equiv="refresh" content="30">
         <style>
             :root {{ --main-gold: #ffcc00; --bg-dark: #0d1117; --border: #30363d; }}
             body {{ background: var(--bg-dark); color: #c9d1d9; font-family: 'Segoe UI', system-ui, sans-serif; padding:20px; line-height:1.5; }}
@@ -460,6 +497,41 @@ async def get_dashboard():
             <pre id="resultArea"></pre>
         </div>
 
+        <div class="panel" style="border-color: #58a6ff;">
+            <h3 style="color: #58a6ff;">🛠️ 快速挂载中心 (Manual Post)</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1.5fr 0.8fr auto; gap: 10px;">
+                <input type="text" id="postGame" placeholder="游戏全称">
+                <input type="text" id="postKey" placeholder="粘贴 CDKEY">
+                <input type="text" id="postPrice" placeholder="价格(元)">
+                <button onclick="submitPost()" style="background: #58a6ff; color: white;">立即上架</button>
+            </div>
+            <div id="postStatus" style="margin-top: 10px; font-size: 13px; font-family: monospace;"></div>
+        </div>
+
+        <script>
+        async function submitPost() {{
+            const status = document.getElementById('postStatus');
+            const payload = {{
+                game: document.getElementById('postGame').value,
+                key: document.getElementById('postKey').value,
+                price: document.getElementById('postPrice').value
+            }};
+
+            status.innerText = '📡 正在发送指令...';
+            try {{
+                const res = await fetch('/web_post', {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/json'}},
+                    body: JSON.stringify(payload)
+                }});
+                const data = await res.json();
+                status.innerHTML = `<span style="color:${{data.status === 'success' ? '#3fb950' : '#f85149'}}">${{data.msg}}</span>`;
+            }} catch(e) {{
+                status.innerText = '🚨 无法连接至指挥部服务器';
+            }}
+        }}
+        </script>
+        
         <div class="panel" style="padding:0; overflow:hidden;">
             <table>
                 <thead>
@@ -518,6 +590,31 @@ from fastapi.responses import FileResponse
 async def favicon():
     return Response(status_code=204) # 直接返回“无内容”，不报 404
 
+
+@app.post("/web_post")
+async def web_post_game(request: Request):
+    """
+    接收网页端提交的 Key、游戏名和价格，启动后台上架
+    """
+    try:
+        data = await request.json()
+        game = data.get("game", "").strip()
+        key = data.get("key", "").strip()
+        price = data.get("price", "").strip()
+
+        if not game or not key or not price:
+            return {"status": "error", "msg": "❌ 信息不完整"}
+
+        # 🚀 启动后台强攻任务
+        print(f"🛰️ [Web 指令] 收到手动上架请求: {game}")
+        asyncio.create_task(global_commander.steampy.action_post_flow(f"{game}|{key}|{price}"))
+        
+        # 顺便发个飞书通知，让你知道 Web 端动了
+        asyncio.create_task(global_commander.notifier.send_text(f"🖥️ Web端指令：已开始挂载 {game}"))
+        
+        return {"status": "success", "msg": f"✅ {game} 挂载任务已启动"}
+    except Exception as e:
+        return {"status": "error", "msg": f"🚨 系统错误: {str(e)}"}
 # 2. 隐藏 API 文档（防止爬虫扫描接口定义）
 # 修改 FastAPI 初始化：
 # app = FastAPI(docs_url=None, redoc_url=None)

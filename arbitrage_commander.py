@@ -36,7 +36,7 @@ class ArbitrageCommander:
         self.ai = ArbitrageAI()
         self.notifier = FeishuNotifier("https://open.feishu.cn/open-apis/bot/v2/hook/70423ec9-8744-40c2-a3af-c94bbbd0990a")
         self.lock = asyncio.Lock()
-        self.min_profit = 5.0  # 有了 AI 过滤，我们可以把门槛稍微调低点
+        self.min_profit = 0.5  # 有了 AI 过滤，我们可以把门槛稍微调低点
         self.status = {
             "state": "IDLE",      # IDLE, RUNNING, RECOVERY, ERROR
             "last_run": None,
