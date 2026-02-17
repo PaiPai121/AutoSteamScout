@@ -62,10 +62,57 @@ def load_history():
 # 在 AGENT_STATE 初始化时调用
 AGENT_STATE["history"] = [] # load_history()
 
+def build_post_card(game_name=""): # 给个默认值，防止报错
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "title": {"tag": "plain_text", "content": "🚀 SENTINEL 上架指挥部"},
+            "template": "orange"
+        },
+        "elements": [
+            {
+                "tag": "input",
+                "placeholder": {"tag": "plain_text", "content": "例如：街霸6"},
+                "name": "game_name_input", # 💡 新增：游戏名输入框
+                "label": {"tag": "plain_text", "content": "🎮 游戏名称"},
+                "default_value": game_name # 如果你发了名字就带入，没发就空着
+            },
+            {
+                "tag": "input",
+                "placeholder": {"tag": "plain_text", "content": "请粘贴 CDKEY..."},
+                "name": "cdkey_input",
+                "label": {"tag": "plain_text", "content": "🔑 激活码 (Key)"}
+            },
+            {
+                "tag": "input",
+                "placeholder": {"tag": "plain_text", "content": "例如: 88.5"},
+                "name": "price_input",
+                "label": {"tag": "plain_text", "content": "💰 上架价格 (元)"}
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "确认发布至 SteamPy"},
+                        "type": "primary",
+                        "value": {"action": "confirm_post"} # 💡 游戏名改从输入框拿，这里不需要传了
+                    }
+                ]
+            }
+        ]
+    }
+
+
+
+
 @app.post("/feishu/webhook")
 async def feishu_bot_handler(request: Request):
+    raw_body = await request.body()
+    print(f"\n📡 [原始信号侦测] 长度: {len(raw_body)} 字节")
     try:
         data = await request.json()
+        print(f"\n📡 [收到飞书信号] 类型: {data.get('header', {}).get('event_type') or data.get('type')}")
     except Exception as e:
         print(f"❌ 接收到的数据非合法 JSON: {e}")
         return {"code": 1}
@@ -74,9 +121,40 @@ async def feishu_bot_handler(request: Request):
     if data.get("type") == "url_verification":
         print("🔗 收到飞书 URL 验证请求，握手成功")
         return {"challenge": data.get("challenge")}
-    
-    # 2. 消息处理逻辑
+    # 💡 2. 新版卡片回调处理 (适配你截图中的 card.action.trigger)
     header = data.get("header", {})
+    if header.get("event_type") == "card.action.trigger":
+        print("🎯 [命中] 检测到卡片按钮点击")
+        event = data.get("event", {})
+        action_data = event.get("action", {})
+        val = action_data.get("value", {})
+        
+        if val.get("action") == "confirm_post":
+            print("🚀 正在创建后台上架任务...")
+            # 拿到输入框里的值 (新版结构在 event["action"]["form_value"])
+            form_vals = action_data.get("form_value", {})
+            game = form_vals.get("game_name_input")
+            key = form_vals.get("cdkey_input")
+            price = form_vals.get("price_input")
+            print(f"📝 提取表单数据: 游戏={game}, 价格={price}, Key={'已拿到' if key else '缺失'}")
+
+            # 启动后台任务
+            async def feedback_task():
+                success = await global_commander.steampy.action_post_flow(f"{game}|{key}|{price}")
+                status_icon = "✅" if success else "❌"
+                await global_commander.notifier.send_text(f"{status_icon} 上架反馈：{game} " + ("成功" if success else "失败"))
+
+            asyncio.create_task(feedback_task())
+            print("✅ 正在尝试向飞书返回 200 OK 响应体")
+            # ⚠️ 必须返回特定的响应格式，否则飞书会报错
+            return {
+                "toast": {"type": "info", "content": "🛰️ 信号已接收，正在同步 SteamPy..."},
+                "card": {
+                    "header": {"title": {"tag": "plain_text", "content": "⏳ 指令处理中"}, "template": "blue"},
+                    "elements": [{"tag": "div", "text": {"tag": "plain_text", "content": f"正在处理：{game}\n请等待后台回执。"}}]
+                }
+            }
+    # 2. 消息处理逻辑
     if header.get("event_type") == "im.message.receive_v1":
         event = data.get("event", {})
         message = event.get("message", {})
@@ -96,16 +174,30 @@ async def feishu_bot_handler(request: Request):
             query_game = query_game.replace('hi', '').strip()
             # 💡 [新增]：识别“上架”指令格式，例如：上架 街霸6|AAAA-BBBB-CCCC|88
             # 加在这里可以确保指令不被当作普通游戏名去杉果搜索
-            if query_game.startswith("上架") or query_game.lower().startswith("post"):
-                post_arg = re.sub(r'^(上架|post)\s*', '', query_game, flags=re.IGNORECASE).strip()
-                if "|" in post_arg:
-                    print(f"🚀 [飞书指令] 触发远程上架流程: {post_arg}")
+            # 💡 [分流识别]：区分【直接上架】与【呼叫卡片】
+            is_post_cmd = query_game.startswith("上架") or query_game.lower().startswith("post")
+            
+            if is_post_cmd:
+                print("上架")
+                # 提取除去“上架”二字后的内容
+                target_content = re.sub(r'^(上架|post)\s*', '', query_game, flags=re.IGNORECASE).strip()
+                
+                # 模式 A：检测到 "|" 分隔符，走老牌“极客直接上架”
+                if "|" in target_content:
+                    print(f"🚀 [飞书指令] 触发远程直接上架: {target_content}")
                     if global_commander:
-                        # 异步调用 steampy 的自动上架流程
-                        asyncio.create_task(global_commander.steampy.action_post_flow(post_arg))
-                        # 及时给飞书反馈已收到指令
-                        await global_commander.notifier.send_text(f"📥 已收到上架请求：\n{post_arg}\n🛰️ 正在调动卫星执行...")
-                    return {"code": 0}
+                        asyncio.create_task(global_commander.steampy.action_post_flow(target_content))
+                        await global_commander.notifier.send_text(f"📥 收到直接指令，执行中...")
+                    return {"code": 0} # 👈 必须 return，否则会去查名为“上架 xxx|xxx”的游戏
+                
+                # 模式 B：通用上架卡片（包含只有“上架”二字的情况）
+                else:
+                    print(f"🎴 [飞书指令] 呼叫通用上架卡片")
+                    if global_commander:
+                        # 将提取到的内容作为默认值传给卡片输入框
+                        card_payload = build_post_card(target_content)
+                        asyncio.create_task(global_commander.notifier.send_card(card_payload))
+                    return {"code": 0} # 👈 必须 return，防止下方的杉果查询逻辑被触发
             # 后台打印，让你一眼看到有没有提取成功
             print(f"\n{'='*30}")
             print(f"📩 [飞书信号原始文本]: '{raw_text}'")
@@ -175,7 +267,7 @@ async def continuous_cruise():
                     logger.error(f"⚠️ 杉果扫描局部超时/异常: {e}")
                     await asyncio.sleep(30)
                     continue # 跳过本次循环，不重启引擎
-                search_tasks = ["", "steam", "act", "rpg"] # 通过不同分类词带出更多结果
+                search_tasks = [] # ["", "steam", "act", "rpg"] # 通过不同分类词带出更多结果
                 
                 for task_keyword in search_tasks:
                     AGENT_STATE["current_mission"] = f"正在扫描分类: {task_keyword or '全场'}"

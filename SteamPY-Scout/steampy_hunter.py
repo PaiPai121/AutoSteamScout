@@ -598,9 +598,10 @@ class SteamPyMonitor(SteamPyScout):
             # 2. 执行填表逻辑 (这里调用你已有的 action_fill_post_form)
             # 注意：需将 action_fill_post_form 里的 input() 逻辑在全自动模式下跳过
             await self.action_fill_post_form(game_name, key_code, price, auto_confirm=True)
-            
+            return True
         except Exception as e:
             print(f"🚨 上架指令执行失败: {e}")
+            return False
         
 if __name__ == "__main__":
     commander = SteamPyMonitor(headless=True)

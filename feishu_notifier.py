@@ -6,6 +6,28 @@ class FeishuNotifier:
     def __init__(self, webhook_url):
         self.webhook_url = webhook_url
 
+    async def send_card(self, card_content: dict):
+        """
+        🚀 发送交互式卡片专用方法
+        """
+        payload = {
+            "msg_type": "interactive",
+            "card": card_content
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    self.webhook_url, 
+                    json=payload, 
+                    headers={'Content-Type': 'application/json'}
+                )
+                if resp.status_code != 200:
+                    print(f"🚨 飞书卡片发送失败: {resp.text}")
+                else:
+                    print("✅ 飞书上架卡片已弹出")
+        except Exception as e:
+            print(f"🚨 飞书卡片网络异常: {e}")
+
     def send_arbitrage_report(self, games):
         """发送富文本报告"""
         post_data = {
