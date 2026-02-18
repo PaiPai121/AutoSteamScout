@@ -274,11 +274,19 @@ async def continuous_cruise():
             AGENT_STATE["current_mission"] = "侦察机初始化中..."
             
             # 启动浏览器实例
-            await global_commander.init_all() 
-            AGENT_STATE["is_running"] = True
+            # await global_commander.init_all() 
+            # AGENT_STATE["is_running"] = True
             
             # 2. 任务主循环
             while True:
+                if AGENT_STATE["is_running"]:
+                    print("🧹 [清理] 正在回收旧浏览器实例，准备全新环境...")
+                    await global_commander.close_all()
+                    await asyncio.sleep(2) # 给系统一点缓冲时间
+                
+                print("🚀 [重启] 正在启动全新的侦察机引擎...")
+                await global_commander.init_all() 
+                AGENT_STATE["is_running"] = True
                 start_time = datetime.datetime.now()
                 match_count = 0  # 成功匹配数量
                 profit_count = 0 # 达到利润门槛数量
@@ -306,6 +314,9 @@ async def continuous_cruise():
                         "capcom",     # 厂商：卡普空（经常有大折扣）
                         "bandai"      # 厂商：万代南梦宫
                     ]
+
+                # 💡 设置扫描深度：每类扫 3 页（大约覆盖 1000+ 商品）
+                scan_depth = 3
                 
                 for task_keyword in search_tasks:
                     AGENT_STATE["current_mission"] = f"正在扫描分类: {task_keyword or '全场'}"
@@ -341,6 +352,40 @@ async def continuous_cruise():
                                     total_profit += float(p_str)
                                 except:
                                     pass
+
+                # --- 🛰️ [核心排序逻辑]：当轮战利品大排队 ---
+                if AGENT_STATE["history"]:
+                    def extract_profit_val(h_item):
+                        """辅助函数：提取利润数值用于排序"""
+                        try:
+                            # 提取利润字符串并清理符号，例如 '¥15.50' -> 15.5
+                            val = str(h_item.get('profit', '0')).replace('¥', '').strip()
+                            return float(val) if val != '---' else -999.0
+                        except:
+                            return -999.0
+
+                    # 1. 局部去重：防止同一个游戏在不同分类任务中重复出现
+                    unique_map = {}
+                    for h in AGENT_STATE["history"]:
+                        g_name = h.get('name')
+                        current_p = extract_profit_val(h)
+                        # 如果是新游戏，或者发现该游戏有更高的利润记录，则更新
+                        if g_name not in unique_map or current_p > extract_profit_val(unique_map[g_name]):
+                            unique_map[g_name] = h
+                    
+                    # 2. 执行排序：按利润从高到低排列 (reverse=True)
+                    sorted_list = list(unique_map.values())
+                    sorted_list.sort(key=extract_profit_val, reverse=True)
+                    
+                    # 3. 结果写回：同步到全局状态，只保留前 100 名最赚钱的目标
+                    AGENT_STATE["history"] = sorted_list[:100]
+                    
+                    # 💡 注意：虽然不跨重启，但这里调用 save_history() 可以方便你在运行期间随时查看 json
+                    save_history() 
+                    
+                    print(f"✅ 排序完成！当前榜首: {AGENT_STATE['history'][0].get('name')} | 利润: {AGENT_STATE['history'][0].get('profit')}")
+                # --- [排序结束] ---
+
                 # 3. 🚨 简报发送逻辑 (此时变量已完成累加)
                 AGENT_STATE["scanned_count"] += 1 # 每次巡航完成，总进度+1
                 # 3. 🚨 重点：在这里插入简报发送逻辑 (for 循环结束后)
@@ -348,8 +393,19 @@ async def continuous_cruise():
                 duration = (end_time - start_time).seconds
                 jitter = random.randint(-600, 600)
                 cycle_time += jitter
+                # --- 🛰️ [新增]：提取本轮精锐名单 ---
+                top_targets = ""
+                if AGENT_STATE["history"]:
+                    # 只取前 3 个最赚钱且通过审计的目标
+                    for i, h in enumerate(AGENT_STATE["history"][:3]):
+                        if "✅" in h.get('status', ''):
+                            top_targets += f"🎯 {h.get('name')} | 利润: {h.get('profit')}\n"
+                
+                target_section = f"🔝 本轮精锐目标：\n{top_targets}" if top_targets else "🛡️ 暂无优质目标"
                 summary_report = (
                     f"📊 【侦察母舰·巡航简报】\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"{target_section}\n" # 💡 把名单插在这里
                     f"━━━━━━━━━━━━━━━\n"
                     f"⏱ 扫描耗时: {duration}s\n"
                     f"📦 扫描总量: {total_scanned_this_round} 件\n" # 💡 这里的总量现在是多分类累加的结果
