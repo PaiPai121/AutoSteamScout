@@ -82,22 +82,27 @@ class SonkwoCNMonitor(SonkwoScout):
 
     # --- Sonkwo-Scout/sonkwo_hunter.py ---
 
-    async def get_search_results(self, keyword):
+    async def get_search_results(self, keyword, page=1, status="lowest"):
         """
         侦察兵底层重构：强制单一搜索，废除智障评分
         """
-        # 💡 强制只用原名，不搞什么 variant 变体循环
-        url = f"https://www.sonkwo.cn/store/search?keyword={keyword}&key_type=steam_key"
+        # 💡 核心修改：在 URL 结尾拼接 page 参数
+        # url = f"https://www.sonkwo.cn/store/search?keyword={keyword}&key_type=steam_key&page={page}"
+        url = f"https://www.sonkwo.cn/store/search?keyword={keyword}&key_type=steam_key&price_status={status}&page={page}"
         
-        print(f"📡 [底层强攻] 目标: {keyword}")
+        print(f"📡 [底层强攻] 目标: {keyword} | 深度: 第 {page} 页")
         try:
             await self.page.goto(url, wait_until="networkidle")
             # 💡 这里增加一个“死等”：确保列表真的出来了
-            await self.page.wait_for_selector(".sku-list-item", timeout=3000)
+            try:
+                await self.page.wait_for_selector(".sku-list-item", timeout=3000)
+            except:
+                print(f"📭 [情报] {keyword} 第 {page} 页无结果，停止深挖。")
+                return []
             
             items = await self.page.query_selector_all(".sku-list-item")
             results = []
-            for item in items:
+            for i, item in enumerate(items, 1):
                 t_el = await item.query_selector(".title")
                 p_el = await item.query_selector(".SKC-sale-price") # 💡 抓取真实价格
                 a_el = await item.query_selector("a.listed-game-block") # 💡 抓取真实链接
@@ -110,9 +115,11 @@ class SonkwoCNMonitor(SonkwoScout):
                     
                     # 💡 必须返回真实数据，Commander 才能算账
                     results.append({
+                        "index": i,          # 确保 index 存在
                         "title": sk_name, 
                         "url": full_url, 
-                        "price": sk_price
+                        "price": sk_price,
+                        "handle": item       # 💡 关键补丁：必须把元素句柄存入 handle 键！
                     })
             print(results)
             # 💡 关键：只要搜到结果，直接返回，不再往下走任何“自适应导航”
@@ -189,23 +196,32 @@ class SonkwoCNMonitor(SonkwoScout):
                 if not cmd: continue
                 if cmd == "exit": break
 
-                # 1. 结构化搜索：搜到结果立即展示列表
+                # 1. 结构化搜索：支持 'search 游戏名 [页码]'
                 elif cmd.startswith("search ") or cmd.startswith("scan "):
-                    name = cmd.replace("search ", "").replace("scan ", "")
-                    print(f"\n[COMMAND] 🔍 正在检索 [Steam+史低] 目标: {name}")
-                    self.current_results = await self.get_search_results(name)
+                    # 💡 逻辑增强：支持识别空格后的页码
+                    parts = cmd.split()
+                    name = parts[1]
+                    # 如果提供了第二个参数且是数字，则作为页码，否则默认为 1
+                    target_page = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
+                    
+                    print(f"\n[COMMAND] 🔍 正在检索 [Steam] 目标: {name} | 第 {target_page} 页")
+                    
+                    # 💡 调用你刚才重写的带 page 参数的函数
+                    self.current_results = await self.get_search_results(name, page=target_page)
                     
                     if self.current_results:
-                        print(f"\n📡 发现 {len(self.current_results)} 个匹配目标：")
-                        for item in self.current_results:
-                            tag = "[史低]" if item['is_lowest'] else ""
-                            print(f"[{item['index']}] {item['title']} | {item['price']} {tag}")
+                        print(f"\n📡 第 {target_page} 页发现 {len(self.current_results)} 个匹配目标：")
+                        # 💡 修复：这里必须给 item 加上 index 属性，否则下方的数字跳转会报错
+                        for i, item in enumerate(self.current_results, 1):
+                            item['index'] = i 
+                            print(f"[{i}] {item['title']} | {item['price']}")
+                        print(f"\n💡 提示：输入数字跳转，或输入 'search {name} {target_page + 1}' 探测下一页")
                     else:
-                        print(f"📌 结果：'{name}' 目前无 [Steam+史低] 商品。")
+                        print(f"📌 结果：'{name}' 第 {target_page} 页无结果或已到底。")
 
                 # 2. 索引跳转：输入数字点进详情
                 elif cmd.isdigit():
-                    if hasattr(self, 'current_results'):
+                    if hasattr(self, 'current_results') and self.current_results:
                         await self.click_item(int(cmd), self.current_results)
                     else:
                         print("⚠️ 请先 search [游戏名]")

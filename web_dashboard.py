@@ -314,44 +314,50 @@ async def continuous_cruise():
                         "capcom",     # 厂商：卡普空（经常有大折扣）
                         "bandai"      # 厂商：万代南梦宫
                     ]
-
+                target_modes = ["lowest", "new_lowest"]
                 # 💡 设置扫描深度：每类扫 3 页（大约覆盖 1000+ 商品）
-                scan_depth = 3
+                max_pages = 3 # 💡 每类探测 3 页，覆盖约 600-900 个动态目标
                 
-                for task_keyword in search_tasks:
-                    AGENT_STATE["current_mission"] = f"正在扫描分类: {task_keyword or '全场'}"
-                    logger.info(f"🔎 正在调取杉果数据: [{task_keyword}]")
-                    
-                    try:
-                        # 💡 关键：这里只传 keyword，不传 page，完美适配原函数
-                        sk_results = await global_commander.sonkwo.get_search_results(keyword=task_keyword)
-                        
-                        if not sk_results:
-                            continue
-                    except Exception as e:
-                        logger.error(f"⚠️ 杉果扫描异常: {e}")
-                        continue
-                    for item in sk_results:
-                        # 💡 关键：接收 process_arbitrage_item 返回的 log 字典
-                        log_entry = await global_commander.process_arbitrage_item(item)
-                        total_scanned_this_round += 1  
-                        
-                        # 🚨 [新增计数逻辑]
-                        if log_entry:
-                            # 1. 只要 py_price 有值且不是 ---，说明在 SteamPy 成功对齐了
-                            if log_entry.get("py_price") and "¥" in str(log_entry.get("py_price")):
-                                match_count += 1
+                for mode in target_modes: # 🚀 第一层：切换 史低/超史低
+                    for task_keyword in search_tasks:
+                        # 💡 新增：内层页码循环
+                        for p in range(1, max_pages + 1):
+                            mode_tag = "超史低" if mode == "new_lowest" else "史低"
+                            # AGENT_STATE["current_mission"] = f"正在扫描: {task_keyword or '全场'} [第{p}页]"
+                            AGENT_STATE["current_mission"] = f"正在扫描: {task_keyword or '全场'} [{mode_tag}-P{p}]"
+                            logger.info(f"🔎 正在调取杉果数据: [{task_keyword}] P{p}")
                             
-                            # 2. 如果状态包含“成功”，说明通过了 AI 审计且利润达标
-                            if "成功" in log_entry.get("status", ""):
-                                profit_count += 1
-                                # 提取利润数字并累加
-                                try:
-                                    # 剥离 ¥ 符号提取数值
-                                    p_str = log_entry.get("profit", "0").replace("¥", "")
-                                    total_profit += float(p_str)
-                                except:
-                                    pass
+                            try:
+                                # 💡 传入已验证的 page 参数
+                                sk_results = await global_commander.sonkwo.get_search_results(keyword=task_keyword, page=p, status=mode)
+                                
+                                # 💡 智能熔断：如果这一页没数据，说明该分类已到底，直接 break 跳到下一个分类
+                                if not sk_results:
+                                    logger.info(f"📭 分类 [{task_keyword}] 已扫描完毕 (共 {p-1} 页)")
+                                    break
+                                    
+                            except Exception as e:
+                                logger.error(f"⚠️ 杉果扫描异常 (词:{task_keyword} 页:{p}): {e}")
+                                continue
+
+                            # --- 处理当前页抓到的战利品 ---
+                            for item in sk_results:
+                                log_entry = await global_commander.process_arbitrage_item(item)
+                                total_scanned_this_round += 1  
+                                
+                                if log_entry:
+                                    # 1. 成功对齐计数
+                                    if log_entry.get("py_price") and "¥" in str(log_entry.get("py_price")):
+                                        match_count += 1
+                                    
+                                    # 2. 盈利目标审计与利润累加
+                                    if "成功" in log_entry.get("status", ""):
+                                        profit_count += 1
+                                        try:
+                                            p_str = log_entry.get("profit", "0").replace("¥", "").strip()
+                                            total_profit += float(p_str)
+                                        except:
+                                            pass
 
                 # --- 🛰️ [核心排序逻辑]：当轮战利品大排队 ---
                 if AGENT_STATE["history"]:
