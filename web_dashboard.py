@@ -165,9 +165,11 @@ async def feishu_bot_handler(request: Request):
                 }
             # 启动后台任务
             async def feedback_task():
-                success = await global_commander.steampy.action_post_flow(f"{game}|{key}|{price}")
-                status_icon = "✅" if success else "❌"
-                await global_commander.notifier.send_text(f"{status_icon} 上架反馈：{game} " + ("成功" if success else "失败"))
+                async with global_commander.lock:
+                    print(f"🚀 [上架] 已抢占浏览器控制权，开始挂载: {game}")
+                    success = await global_commander.steampy.action_post_flow(f"{game}|{key}|{price}")
+                    status_icon = "✅" if success else "❌"
+                    await global_commander.notifier.send_text(f"{status_icon} 上架反馈：{game} " + ("成功" if success else "失败"))
 
             asyncio.create_task(feedback_task())
             print("✅ 正在尝试向飞书返回 200 OK 响应体")
@@ -285,8 +287,10 @@ async def continuous_cruise():
                     await asyncio.sleep(2) # 给系统一点缓冲时间
                 
                 print("🚀 [重启] 正在启动全新的侦察机引擎...")
-                await global_commander.init_all() 
-                AGENT_STATE["is_running"] = True
+                async with global_commander.lock:
+                    print("🚀 [重启] 正在启动全新引擎...")
+                    await global_commander.init_all() 
+                    AGENT_STATE["is_running"] = True
                 start_time = datetime.datetime.now()
                 match_count = 0  # 成功匹配数量
                 profit_count = 0 # 达到利润门槛数量
@@ -322,23 +326,25 @@ async def continuous_cruise():
                     for task_keyword in search_tasks:
                         # 💡 新增：内层页码循环
                         for p in range(1, max_pages + 1):
-                            mode_tag = "超史低" if mode == "new_lowest" else "史低"
-                            # AGENT_STATE["current_mission"] = f"正在扫描: {task_keyword or '全场'} [第{p}页]"
-                            AGENT_STATE["current_mission"] = f"正在扫描: {task_keyword or '全场'} [{mode_tag}-P{p}]"
-                            logger.info(f"🔎 正在调取杉果数据: [{task_keyword}] P{p}")
-                            
-                            try:
-                                # 💡 传入已验证的 page 参数
-                                sk_results = await global_commander.sonkwo.get_search_results(keyword=task_keyword, page=p, status=mode)
+                            # 💡 每一页开始前拿锁，扫完这一页自动放锁
+                            async with global_commander.lock:
+                                mode_tag = "超史低" if mode == "new_lowest" else "史低"
+                                # AGENT_STATE["current_mission"] = f"正在扫描: {task_keyword or '全场'} [第{p}页]"
+                                AGENT_STATE["current_mission"] = f"正在扫描: {task_keyword or '全场'} [{mode_tag}-P{p}]"
+                                logger.info(f"🔎 正在调取杉果数据: [{task_keyword}] P{p}")
                                 
-                                # 💡 智能熔断：如果这一页没数据，说明该分类已到底，直接 break 跳到下一个分类
-                                if not sk_results:
-                                    logger.info(f"📭 分类 [{task_keyword}] 已扫描完毕 (共 {p-1} 页)")
-                                    break
+                                try:
+                                    # 💡 传入已验证的 page 参数
+                                    sk_results = await global_commander.sonkwo.get_search_results(keyword=task_keyword, page=p, status=mode)
                                     
-                            except Exception as e:
-                                logger.error(f"⚠️ 杉果扫描异常 (词:{task_keyword} 页:{p}): {e}")
-                                continue
+                                    # 💡 智能熔断：如果这一页没数据，说明该分类已到底，直接 break 跳到下一个分类
+                                    if not sk_results:
+                                        logger.info(f"📭 分类 [{task_keyword}] 已扫描完毕 (共 {p-1} 页)")
+                                        break
+                                        
+                                except Exception as e:
+                                    logger.error(f"⚠️ 杉果扫描异常 (词:{task_keyword} 页:{p}): {e}")
+                                    continue
 
                             # --- 处理当前页抓到的战利品 ---
                             for item in sk_results:
@@ -485,12 +491,24 @@ async def get_dashboard():
             h_status = h.get('status', '未知状态')
             # 判定盈利且审计通过的逻辑
             is_profitable = "✅" in h_status
+            star_color = "#8b949e"
             color = "#3fb950" if is_profitable else "#f85149"
-            
+            raw_rating = h.get('rating', '---')
+            try:
+                # 提取数字进行颜色判定
+                r_val = float(str(raw_rating).replace('%', '')) if '%' in str(raw_rating) else 0
+                star_color = "#ffcc00" if r_val >= 90 else ("#3fb950" if r_val >= 80 else "#8b949e")
+            except:
+                star_color = "#8b949e"
             rows += f"""
             <tr>
                 <td>{h.get('time', '--:--:--')}</td>
-                <td style="font-weight:bold;">{h.get('name', '未知商品')}</td>
+                <td>
+                    <div style="font-weight:bold; color:#f0f6fc;">{h.get('name', '未知商品')}</div>
+                    <div style="font-size:12px; color:{star_color}; margin-top:4px;">
+                        <span>⭐ Steam 好评: {raw_rating}</span>
+                    </div>
+                </td>
                 <td>{h.get('sk_price', '---')}</td>
                 <td style="color:#58a6ff; font-family:monospace; font-size:12px;">{h.get('py_price', '---')}</td>
                 <td style='color:{color}; font-weight:bold;'>{h.get('profit', '---')} <small>({h.get('roi','0%')})</small></td>
@@ -517,12 +535,39 @@ async def get_dashboard():
             .dot {{ height:12px; width:12px; background:{dot_color}; border-radius:50%; box-shadow: 0 0 8px {dot_color}; }}
             
             /* 表格布局调整：为 Top 5 价格留出专用宽度 */
-            table {{ width:100%; border-collapse:separate; border-spacing:0; margin-top:10px; table-layout: fixed; }}
-            th {{ background: #21262d; padding:12px; text-align:left; border-bottom: 2px solid var(--main-gold); color: var(--main-gold); }}
-            td {{ padding:12px; border-bottom:1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+            /* --- 🛰️ 战术表格改良：解除截断限制 --- */
+            table {{ 
+                width:100%; 
+                border-collapse:separate; 
+                border-spacing:0; 
+                margin-top:10px; 
+                table-layout: auto; /* 💡 允许表格根据内容自适应宽度 */
+            }}
             
+            th {{ 
+                background: #21262d; 
+                padding:12px; 
+                text-align:left; 
+                border-bottom: 2px solid var(--main-gold); 
+                color: var(--main-gold); 
+                white-space: nowrap; 
+            }}
+            
+            td {{ 
+                padding:12px; 
+                border-bottom:1px solid var(--border); 
+                /* 💡 关键：允许换行，去掉 ellipsis 截断 */
+                white-space: normal !important;  
+                word-break: break-all; 
+                overflow: visible !important;
+                text-overflow: clip !important;
+                vertical-align: top;
+            }}
+
             /* 第四列（SteamPy Top5）锁定宽度 */
-            td:nth-child(4) {{ width: 220px; }}
+            td:nth-child(2) {{ min-width: 150px; font-weight: bold; }} /* 游戏实体 */
+            td:nth-child(4) {{ width: 200px; color: #58a6ff; font-family: monospace; font-size: 12px; }} /* Top5 价格 */
+            td:nth-child(6) {{ min-width: 250px; font-size: 13px; }} /* AI 审计 */
 
             tr:hover {{ background: #21262d; }}
             
@@ -655,26 +700,31 @@ async def favicon():
 
 @app.post("/web_post")
 async def web_post_game(request: Request):
-    """
-    接收网页端提交的 Key、游戏名和价格，启动后台上架
-    """
     try:
         data = await request.json()
-        game = data.get("game", "").strip()
-        key = data.get("key", "").strip()
-        price = data.get("price", "").strip()
+        game, key, price = data.get("game", "").strip(), data.get("key", "").strip(), data.get("price", "").strip()
 
         if not game or not key or not price:
             return {"status": "error", "msg": "❌ 信息不完整"}
 
-        # 🚀 启动后台强攻任务
-        print(f"🛰️ [Web 指令] 收到手动上架请求: {game}")
-        asyncio.create_task(global_commander.steampy.action_post_flow(f"{game}|{key}|{price}"))
+        async def web_task():
+            try:
+                # 💡 核心：进入排队序列
+                async with global_commander.lock:
+                    print(f"🛰️ [Web 指令] 正在执行挂载: {game}")
+                    success = await global_commander.steampy.action_post_flow(f"{game}|{key}|{price}")
+                    status = "✅ 成功" if success else "❌ 失败"
+                    await global_commander.notifier.send_text(f"🖥️ Web端挂载反馈：{game} {status}")
+            except Exception as e:
+                logger.error(f"🚨 Web上架任务崩溃: {e}")
+                await global_commander.notifier.send_text(f"🚨 Web端任务异常: {game}\n原因: {str(e)[:100]}")
+
+        # 挂载后台任务
+        asyncio.create_task(web_task())
         
-        # 顺便发个飞书通知，让你知道 Web 端动了
-        asyncio.create_task(global_commander.notifier.send_text(f"🖥️ Web端指令：已开始挂载 {game}"))
-        
-        return {"status": "success", "msg": f"✅ {game} 挂载任务已启动"}
+        # 立即告知用户指令已送达
+        return {"status": "success", "msg": f"✅ {game} 指令已排队，请留意飞书回执"}
+
     except Exception as e:
         return {"status": "error", "msg": f"🚨 系统错误: {str(e)}"}
 # 2. 隐藏 API 文档（防止爬虫扫描接口定义）

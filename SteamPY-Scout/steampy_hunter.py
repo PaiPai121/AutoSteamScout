@@ -4,8 +4,36 @@ import datetime
 from steampy_scout_core import SteamPyScout
 from tabulate import tabulate
 import sys
-
+import os
 class SteamPyMonitor(SteamPyScout):
+    def __init__(self, **kwargs):
+        # 💡 先调用父类的初始化
+        super().__init__(**kwargs)
+        # 💡 显式声明这个成员变量，初始为空
+        self.notifier = None 
+        self._shot_counter = 0 # 顺便初始化你的截图计数器
+    # --- 📸 侦察机黑匣子系统 ---
+    async def take_screenshot(self, step_name):
+        """
+        保存最近 10 张截图，文件名循环覆盖
+        """
+        if not hasattr(self, '_shot_counter'):
+            self._shot_counter = 0
+            # 确保截图目录存在
+            if not os.path.exists("blackbox"):
+                os.makedirs("blackbox")
+
+        # 计数器 0-9 循环
+        idx = self._shot_counter % 10
+        timestamp = datetime.datetime.now().strftime("%H%M%S")
+        filename = f"blackbox/step_{idx}_{step_name}_{timestamp}.png"
+        
+        try:
+            await self.page.screenshot(path=filename)
+            print(f"📸 [黑匣子] 记录点 {idx}: {step_name}")
+            self._shot_counter += 1
+        except Exception as e:
+            print(f"🚨 截图失败: {e}")
     async def get_current_state(self):
         # --- 原有的页面判断逻辑 ---
         url = self.page.url
@@ -482,10 +510,12 @@ class SteamPyMonitor(SteamPyScout):
         
         try:
             # 1. 触发弹窗并锁定活跃层
+            await self.take_screenshot("before_add_click")
             add_btn = await self.page.wait_for_selector("button:has-text('添加CDKey')")
             await add_btn.click(force=True)
             
             await asyncio.sleep(1.0)
+            await self.take_screenshot("modal_opened")
             all_modals = await self.page.query_selector_all(".ivu-modal-content")
             active_modal = None
             for modal in reversed(all_modals):
@@ -495,7 +525,7 @@ class SteamPyMonitor(SteamPyScout):
             
             if not active_modal:
                 print("🚨 未找到活跃弹窗")
-                return False
+                return False, "🚨 上架失败: 未找到活跃弹窗"
 
             # 2. 搜索阶段
             input_box = await active_modal.wait_for_selector(".addCdkIpt")
@@ -504,13 +534,40 @@ class SteamPyMonitor(SteamPyScout):
             await search_btn.click()
             
             # 3. 选择版本阶段
-            print("⏳ 等待搜索结果列表...")
-            target_selection = await active_modal.wait_for_selector(
-                f".c-point:has(.gameNameCDK:has-text('{game_name}'))", 
-                timeout=8000
-            )
-            await target_selection.click()
-            print(f"🎯 已选中版本: {game_name}")
+            print(f"⏳ 正在执行严格版本校验，目标: {game_name}")
+            
+            # 💡 增加缓冲，确保列表加载完成
+            await asyncio.sleep(1.5) 
+            
+            # 获取所有候选项列表
+            options = await active_modal.query_selector_all(".c-point")
+            
+            found_target = None
+            for opt in options:
+                name_el = await opt.query_selector(".gameNameCDK")
+                if name_el:
+                    # 💡 这里抓取的是网页上实际显示的名字
+                    actual_text = (await name_el.text_content()).strip()
+                    
+                    # 💡 核心校验：变量对变量，没有任何硬编码
+                    if actual_text == game_name:
+                        found_target = opt
+                        print(f"🎯 命中！找到 100% 匹配项: {actual_text}")
+                        break
+                    else:
+                        # 仅作为调试记录，不影响运行
+                        print(f"⏭️  跳过不匹配项: {actual_text}")
+            
+            if found_target:
+                await found_target.click()
+                print(f"✅ 已选中版本: {game_name}")
+                await self.take_screenshot("version_selected")
+            else:
+                # 🛡️ 智能熔断：如果搜出来的名字和你传进来的 game_name 不一样，直接报错
+                error_log = f"🚨 严格匹配失败：列表中没有名为 '{game_name}' 的项"
+                print(error_log)
+                await self.take_screenshot("match_failed_stop")
+                return False, error_log
 
             # 4. 录入数据阶段
             key_area = await active_modal.wait_for_selector("textarea.ivu-input")
@@ -540,7 +597,7 @@ class SteamPyMonitor(SteamPyScout):
                 user_input = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
                 if "yes" in user_input.lower():
                     should_submit = True
-
+            await self.take_screenshot("form_filled")
             # 执行提交动作
             if should_submit:
                 # --- A. 点击初步提交按钮（黑色） ---
@@ -551,7 +608,7 @@ class SteamPyMonitor(SteamPyScout):
                 # --- B. 处理“注意！！”二次确认弹窗 ---
                 await asyncio.sleep(2.0) # 等待新弹窗动画
                 print("🔍 正在捕捉终极确认弹窗...")
-                
+                await self.take_screenshot("first_submit_done")
                 all_modals_v2 = await self.page.query_selector_all(".ivu-modal-content")
                 final_confirm_modal = None
                 
@@ -563,31 +620,41 @@ class SteamPyMonitor(SteamPyScout):
                 
                 if final_confirm_modal:
                     print("⚠️ 发现安全警告弹窗，正在执行【确认出售】...")
+                    await self.take_screenshot("final_warning_check")
                     confirm_btn = await final_confirm_modal.wait_for_selector("button.ivu-btn-info")
                     await confirm_btn.click()
                     
                     # --- C. 结果检查 ---
                     await asyncio.sleep(2)
                     captcha = await self.page.query_selector(".captcha-popup")
+                    await self.take_screenshot("post_result_final")
                     if captcha:
-                        print("🛡️ 触发验证码！请在浏览器手动完成滑动。")
+                        msg = f"🛡️ {game_name} 触发验证码！请去浏览器手动滑动。"
+                        print(msg)
+                        return False, msg # 💡 明确返回失败状态
                     else:
+                        msg = f"✅ {game_name} 已成功挂载，价格: ¥{price}。"
                         print("✨ 上架流程已完整结束！")
+                        return True, msg # 💡 成功出口 1
                 else:
-                    print("🚨 未能触发二次确认弹窗，可能上架受限。")
+                    msg = f"🚨 {game_name} 未能触发二次确认弹窗，可能上架受限（如sku禁售）。"
+                    print(msg)
+                    return False, msg # 💡 失败出口：未见确认弹窗
             else:
-                print("❌ 已取消提交。")
-            
-            return True
+                msg = "❌ 已取消提交（人工/手动干预）。"
+                print(msg)
+                return False, msg # 💡 失败出口：取消操作
 
         except Exception as e:
             print(f"🚨 [上架流程崩溃]: {e}")
-            return False
+            return False, f"🚨 上架失败: {e}"
         
-    async def action_post_flow(self, arg):
+    async def action_post_flow(self, arg, notifier=None):
         """
         处理远程下达的 post 指令：解析参数并执行上架
         """
+        if not notifier:
+            notifier = self.notifier
         try:
             game_name, key_code, price = arg.split("|")
             print(f"🛰️ [执行中] 目标: {game_name} | 价格: {price}")
@@ -597,8 +664,15 @@ class SteamPyMonitor(SteamPyScout):
             
             # 2. 执行填表逻辑 (这里调用你已有的 action_fill_post_form)
             # 注意：需将 action_fill_post_form 里的 input() 逻辑在全自动模式下跳过
-            await self.action_fill_post_form(game_name, key_code, price, auto_confirm=True)
-            return True
+            success, msg = await self.action_fill_post_form(game_name, key_code, price, auto_confirm=True)
+            
+            # 3. 💡 直接使用传入的 notifier，不再 import，彻底解决报错
+            if notifier:
+                await notifier.send_text(f"🛰️ 上架回执：\n{msg}")
+            else:
+                print(f"⚠️ 未接通通知器，上架结果: {msg}")
+            
+            return success
         except Exception as e:
             print(f"🚨 上架指令执行失败: {e}")
             return False

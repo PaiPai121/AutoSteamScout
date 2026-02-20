@@ -35,6 +35,7 @@ class ArbitrageCommander:
         self.steampy = SteamPyMonitor()
         self.ai = ArbitrageAI()
         self.notifier = FeishuNotifier("https://open.feishu.cn/open-apis/bot/v2/hook/70423ec9-8744-40c2-a3af-c94bbbd0990a")
+        self.steampy.notifier = self.notifier
         self.lock = asyncio.Lock()
         self.min_profit = 0.5  # 有了 AI 过滤，我们可以把门槛稍微调低点
         self.status = {
@@ -60,6 +61,58 @@ class ArbitrageCommander:
             # AGENT_STATE["current_mission"] = f"错误: {e}"
             return False
     
+
+    async def check_steam_quality_gate(self, game_name):
+        """
+        [精准版] 结合权重算法的质量监测，防止搜错游戏
+        """
+        import aiohttp
+        headers = {"User-Agent": "Mozilla/5.0"}
+        connector = aiohttp.TCPConnector(ssl=False)
+        
+        # 1. 第一步：在 Steam 官方库里进行“初筛”
+        search_url = f"https://store.steampowered.com/api/storesearch/?term={game_name}&l=schinese&cc=CN"
+        spy_api_url = "https://steamspy.com/api.php?request=appdetails&appid="
+
+        try:
+            async with aiohttp.ClientSession(headers=headers, connector=connector) as session:
+                async with session.get(search_url, timeout=8) as resp:
+                    search_data = await resp.json()
+                    
+                    if not search_data.get("total") or not search_data.get("items"):
+                        return True, "---" # 没搜到不拦截
+
+                    # 💡 【核心精准逻辑】：计算名称相似度，防止搜到错误的关联游戏
+                    best_match = None
+                    for item in search_data["items"]:
+                        steam_name = item.get("name", "")
+                        # 检查杉果名是否包含在 Steam 名里，或者反之
+                        # 排除掉 DLC、Soundtrack 等干扰项
+                        if any(x in steam_name.upper() for x in ["DLC", "SOUNDTRACK", "CONTENT"]):
+                            continue
+                        
+                        best_match = item
+                        break # 取第一个非 DLC 的最相关结果
+                    
+                    if not best_match: return True, "---"
+                    
+                    appid = best_match["id"]
+
+                # 2. 第二步：用拿到的唯一 AppID 去 SteamSpy 取数据
+                async with session.get(f"{spy_api_url}{appid}", timeout=8) as resp:
+                    spy_data = await resp.json()
+                    pos = spy_data.get("positive", 0)
+                    neg = spy_data.get("negative", 0)
+                    total = pos + neg
+                    
+                    if total > 50:
+                        rate = (pos / total) * 100
+                        # 只有评价达到一定规模且分数低于 80 才拦截
+                        return rate >= 80, round(rate, 1)
+            return True, 100
+        except:
+            return True, "---"
+        
     async def update_result(self, log_entry):
         if self.agent_state is not None:
             # 💡 强制打印，确保 Commander 确实把数据发过来了
@@ -110,7 +163,10 @@ class ArbitrageCommander:
         全能加工中心：负责清洗、搜索、AI 语义审计（含理由捕获）及利润核算
         """
         sk_name = sk_item.get('title', '未知商品')
-        
+        is_pass, rating = await self.check_steam_quality_gate(sk_name)
+        if not is_manual and not is_pass:
+            print(f"🗑️ [质量熔断] {sk_name} 好评率仅 {rating}%，判定为潜在垃圾股，已拦截。")
+            return None
         # --- 1. 增强型价格防弹处理 ---
         raw_price_str = str(sk_item.get('price', '0'))
         try:
@@ -220,6 +276,7 @@ class ArbitrageCommander:
         log_entry = {
             "time": datetime.datetime.now().strftime("%H:%M:%S"),
             "name": f"🛰️(点杀) {sk_name}" if is_manual else sk_name,
+            "rating": f"{rating}%" if isinstance(rating, (int, float)) else rating, # 👈 [新增] 记录好评率
             "sk_price": f"¥{sk_price}",
             "py_price": f"¥{py_price_display}",
             "profit": profit_str,
