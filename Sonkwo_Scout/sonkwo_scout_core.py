@@ -1,12 +1,17 @@
-import asyncio
+# Sonkwo_Scout/sonkwo_scout_core.py
+import config
 import os
 from playwright.async_api import async_playwright
 
 class SonkwoScout:
     def __init__(self, headless=True):
         # 1. 核心：锁定你在 save_sonkwo_session.py 中保存数据的文件夹
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        self.user_data_dir = os.path.join(current_dir, "sonkwo_data")
+        # current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.user_data_dir = os.path.join(
+            config.PROJECT_ROOT, 
+            "Sonkwo_Scout", 
+            "sonkwo_data"
+        )
         self.headless = headless
         self.context = None
         self.page = None
