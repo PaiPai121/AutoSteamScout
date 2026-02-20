@@ -1,7 +1,7 @@
 import asyncio
 import re
 import datetime
-from steampy_scout_core import SteamPyScout
+from SteamPY_Scout.steampy_scout_core import SteamPyScout
 from tabulate import tabulate
 import sys
 import os

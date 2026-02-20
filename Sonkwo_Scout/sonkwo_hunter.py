@@ -2,7 +2,7 @@ import asyncio
 import os
 import datetime
 import sys
-from sonkwo_scout_core import SonkwoScout
+from Sonkwo_Scout.sonkwo_scout_core import SonkwoScout
 from tabulate import tabulate
 
 from difflib import SequenceMatcher

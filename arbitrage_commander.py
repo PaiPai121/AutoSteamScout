@@ -5,16 +5,27 @@ import datetime
 import traceback
 import re
 import config
-# 1. 自动路径挂载
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(ROOT_DIR, "Sonkwo_Scout"))
-sys.path.append(os.path.join(ROOT_DIR, "SteamPY_Scout"))
-sys.path.append(os.path.join(ROOT_DIR, "game_rating"))
-# 2. 导入组件
-from sonkwo_hunter import SonkwoCNMonitor
-from steampy_hunter import SteamPyMonitor
+from pathlib import Path
+
+# --- 🚀 路径自愈逻辑 ---
+# 强制定位当前脚本所在的绝对路径为根目录
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+# 1. 确保根目录在搜索路径的第一位
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# 2. 特别处理：如果还是找不到，手动把当前目录加入 PYTHONPATH 环境
+os.environ["PYTHONPATH"] = str(PROJECT_ROOT)
+
+import config
+
+# --- 📦 导入组件 ---
+# 既然已经有了 __init__.py 且路径已锚定，这样写就稳了
+from Sonkwo_Scout.sonkwo_hunter import SonkwoCNMonitor
+from SteamPY_Scout.steampy_hunter import SteamPyMonitor
 from feishu_notifier import FeishuNotifier
-from ai_engine import ArbitrageAI  # 导入你的新大脑
+from ai_engine import ArbitrageAI
 from game_rating.rating_manager import GameRatingManager
 
 def get_search_query(raw_name):
