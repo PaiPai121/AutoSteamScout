@@ -80,8 +80,8 @@ tmp/
 temp/
 
 # Browser data directories
-Sonkwo-Scout/sonkwo_data/
-SteamPY-Scout/steampy_data/
+Sonkwo_Scout/sonkwo_data/
+SteamPY_Scout/steampy_data/
 
 # Log files
 *.log
@@ -91,3 +91,5 @@ mission_log.txt
 arbitrage_history.json
 
 game_rating/steamspy_all.json
+blackbox
+steam_app_list.json

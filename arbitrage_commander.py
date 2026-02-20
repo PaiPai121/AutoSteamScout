@@ -4,16 +4,18 @@ import os
 import datetime
 import traceback
 import re
+import config
 # 1. 自动路径挂载
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(ROOT_DIR, "Sonkwo-Scout"))
-sys.path.append(os.path.join(ROOT_DIR, "SteamPY-Scout"))
-
+sys.path.append(os.path.join(ROOT_DIR, "Sonkwo_Scout"))
+sys.path.append(os.path.join(ROOT_DIR, "SteamPY_Scout"))
+sys.path.append(os.path.join(ROOT_DIR, "game_rating"))
 # 2. 导入组件
 from sonkwo_hunter import SonkwoCNMonitor
 from steampy_hunter import SteamPyMonitor
 from feishu_notifier import FeishuNotifier
 from ai_engine import ArbitrageAI  # 导入你的新大脑
+from game_rating.rating_manager import GameRatingManager
 
 def get_search_query(raw_name):
     # 1. 剔除噪音词
@@ -34,10 +36,12 @@ class ArbitrageCommander:
         self.sonkwo = SonkwoCNMonitor()
         self.steampy = SteamPyMonitor()
         self.ai = ArbitrageAI()
-        self.notifier = FeishuNotifier("https://open.feishu.cn/open-apis/bot/v2/hook/70423ec9-8744-40c2-a3af-c94bbbd0990a")
+        # 💡 [新增] 将评分中心挂载到 Commander 上，并复用已有的 AI 引擎
+        self.rating_center = GameRatingManager(ai_handler=self.ai)
+        self.notifier = FeishuNotifier(config.NOTIFIER_CONFIG["WEBHOOK_URL"])
         self.steampy.notifier = self.notifier
         self.lock = asyncio.Lock()
-        self.min_profit = 0.5  # 有了 AI 过滤，我们可以把门槛稍微调低点
+        self.min_profit = config.AUDIT_CONFIG["MIN_PROFIT"]  # 有了 AI 过滤，我们可以把门槛稍微调低点
         self.status = {
             "state": "IDLE",      # IDLE, RUNNING, RECOVERY, ERROR
             "last_run": None,
@@ -48,6 +52,10 @@ class ArbitrageCommander:
     async def init_all(self):
         self.status["state"] = "INITIALIZING"
         print("🛰️  正在启动【AI 增强版】双平台联合侦察系统...")
+        # 💡 [关键点] 必须在这里初始化评分中心的数据库
+        if not self.rating_center.initialize():
+            print("❌ 评分中心初始化失败，请检查 steamspy_all.json 是否存在。")
+            return False
         # 依次启动避免浏览器冲突
         try:
             await self.sonkwo.start()
@@ -61,58 +69,6 @@ class ArbitrageCommander:
             # AGENT_STATE["current_mission"] = f"错误: {e}"
             return False
     
-
-    async def check_steam_quality_gate(self, game_name):
-        """
-        [精准版] 结合权重算法的质量监测，防止搜错游戏
-        """
-        import aiohttp
-        headers = {"User-Agent": "Mozilla/5.0"}
-        connector = aiohttp.TCPConnector(ssl=False)
-        
-        # 1. 第一步：在 Steam 官方库里进行“初筛”
-        search_url = f"https://store.steampowered.com/api/storesearch/?term={game_name}&l=schinese&cc=CN"
-        spy_api_url = "https://steamspy.com/api.php?request=appdetails&appid="
-
-        try:
-            async with aiohttp.ClientSession(headers=headers, connector=connector) as session:
-                async with session.get(search_url, timeout=8) as resp:
-                    search_data = await resp.json()
-                    
-                    if not search_data.get("total") or not search_data.get("items"):
-                        return True, "---" # 没搜到不拦截
-
-                    # 💡 【核心精准逻辑】：计算名称相似度，防止搜到错误的关联游戏
-                    best_match = None
-                    for item in search_data["items"]:
-                        steam_name = item.get("name", "")
-                        # 检查杉果名是否包含在 Steam 名里，或者反之
-                        # 排除掉 DLC、Soundtrack 等干扰项
-                        if any(x in steam_name.upper() for x in ["DLC", "SOUNDTRACK", "CONTENT"]):
-                            continue
-                        
-                        best_match = item
-                        break # 取第一个非 DLC 的最相关结果
-                    
-                    if not best_match: return True, "---"
-                    
-                    appid = best_match["id"]
-
-                # 2. 第二步：用拿到的唯一 AppID 去 SteamSpy 取数据
-                async with session.get(f"{spy_api_url}{appid}", timeout=8) as resp:
-                    spy_data = await resp.json()
-                    pos = spy_data.get("positive", 0)
-                    neg = spy_data.get("negative", 0)
-                    total = pos + neg
-                    
-                    if total > 50:
-                        rate = (pos / total) * 100
-                        # 只有评价达到一定规模且分数低于 80 才拦截
-                        return rate >= 80, round(rate, 1)
-            return True, 100
-        except:
-            return True, "---"
-        
     async def update_result(self, log_entry):
         if self.agent_state is not None:
             # 💡 强制打印，确保 Commander 确实把数据发过来了
@@ -163,11 +119,7 @@ class ArbitrageCommander:
         全能加工中心：负责清洗、搜索、AI 语义审计（含理由捕获）及利润核算
         """
         sk_name = sk_item.get('title', '未知商品')
-        is_pass, rating = await self.check_steam_quality_gate(sk_name)
-        if not is_manual and not is_pass:
-            print(f"🗑️ [质量熔断] {sk_name} 好评率仅 {rating}%，判定为潜在垃圾股，已拦截。")
-            return None
-        # --- 1. 增强型价格防弹处理 ---
+        # --- 1. [关键补回] 进货价提取与防弹处理 ---
         raw_price_str = str(sk_item.get('price', '0'))
         try:
             # 暴力提取数字和小数点，彻底解决 '...' 或 '券后价' 导致的崩溃
@@ -176,8 +128,57 @@ class ArbitrageCommander:
         except Exception:
             sk_price = 0.0
 
-        if sk_price <= 0:
+        if sk_price <= 0: 
             return None # 价格异常不具备分析价值
+        
+        # --- 2. 统一质量/版本审计 ---
+        appid, rating_data, status = await self.rating_center.get_rating_and_id(sk_name)
+        
+        rating_val = None 
+        total_reviews = 0
+        print(f"🔬 [底层数据] {sk_name} -> 状态: {status} | 原始返回: {rating_data}")
+        if status == "SUCCESS" and isinstance(rating_data, dict):
+            # 💡 [关键修正] 适配真实的返回字段
+            # 优先从 review_count 获取总评论数
+            total_reviews = rating_data.get('review_count', 0)
+            
+            # 💡 [关键修正] 从 info 字符串中正则提取百分比数字 (例如 "Rating: 95%" -> 95)
+            info_str = rating_data.get('info', '')
+            score_match = re.search(r'Rating:\s*(\d+)%', info_str)
+            if score_match:
+                rating_val = int(score_match.group(1))
+            else:
+                # 如果正则失败，尝试 fallback 到旧的 pos/neg 计算（以防万一）
+                pos = rating_data.get('positive', 0)
+                neg = rating_data.get('negative', 0)
+                if pos + neg > 0:
+                    total_reviews = pos + neg
+                    rating_val = int((pos / total_reviews) * 100)
+
+        # --- 核心拦截策略调整：疑罪从无 ---
+        if not is_manual:
+            # 策略 A：如果审计状态是 ERROR (代码报错)，我们要拦截以防万一
+            if status == "ERROR":
+                print(f"🚨 [系统异常] {sk_name} -> {rating_data}")
+                return None
+            
+            # 策略 B：只有在【明确拿到高样本量】且【明确差评】时才熔断
+            # 如果是“识别弃权”或“搜不到”，rating_val 会是 None，从而跳过这个 if
+            if isinstance(rating_val, int) and total_reviews > config.AUDIT_CONFIG["MIN_REVIEWS"]:
+                if rating_val < config.AUDIT_CONFIG["MIN_SCORE"]: # 确定的差评大作
+                    print(f"🗑️ [差评熔断] {sk_name} (好评率:{rating_val}%)，已拦截。")
+                    return None
+            
+            # 💡 这里不再对 UNCERTAIN (识别弃权) 进行 return None，而是让它流下去继续比价
+            if status == "UNCERTAIN":
+                print(f"⚠️ [审计模糊] {sk_name} -> AI无法确定身份，放行至变现端进一步对齐。")
+
+        # --- 3. 记录数据 (兼容字符串和数字显示) ---
+        sk_item['steam_appid'] = appid
+        rating = rating_val if rating_val is not None else rating_data
+        # 调试输出：一眼看出这款游戏在数据库里的真实底细
+        print(f"📊 [审计快报] {sk_name} | 状态: {status} | 评分: {rating if isinstance(rating, int) else 'N/A'}% | 样本: {total_reviews}")
+        sk_item['steam_rating_detail'] = rating_data.get('info', 'N/A') if isinstance(rating_data, dict) else "N/A"
 
         # --- 2. 搜索词降噪（不缩词，调用类外定义的 get_search_query） ---
         search_keyword = get_search_query(sk_name)
@@ -272,11 +273,18 @@ class ArbitrageCommander:
         elif audit_result == "ENTITY_ERROR":
             status_text = "❌ 实体不符"
 
+        # 1. 构造友好的简短评价
+        if isinstance(rating, int):
+            display_rating = f"{rating}%"
+        else:
+            # 如果是 AI 的长篇大论，我们只在 Web 评价栏显示“待核实”或“需手动”
+            # 而把那一大串理由留在 log_entry['reason'] 供鼠标悬停查看
+            display_rating = "🔍 待核实" if "识别弃权" in str(rating) else "⚠️ 审计跳过"
         # 构造完整 log_entry，确保包含 'profit' 等所有字段防止前端 KeyError
         log_entry = {
             "time": datetime.datetime.now().strftime("%H:%M:%S"),
             "name": f"🛰️(点杀) {sk_name}" if is_manual else sk_name,
-            "rating": f"{rating}%" if isinstance(rating, (int, float)) else rating, # 👈 [新增] 记录好评率
+            "rating": display_rating,
             "sk_price": f"¥{sk_price}",
             "py_price": f"¥{py_price_display}",
             "profit": profit_str,
