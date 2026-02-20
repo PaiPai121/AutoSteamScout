@@ -6,6 +6,7 @@ import traceback
 import re
 import config
 from pathlib import Path
+from Finance_Center.finance_service import FinanceService
 
 # --- 🚀 路径自愈逻辑 ---
 # 强制定位当前脚本所在的绝对路径为根目录
@@ -59,6 +60,7 @@ class ArbitrageCommander:
             "retry_count": 0,
             "current_mission": "等待指令"
         }
+        self.finance = None
 
     async def init_all(self):
         self.status["state"] = "INITIALIZING"
@@ -71,6 +73,9 @@ class ArbitrageCommander:
         try:
             await self.sonkwo.start()
             await self.steampy.start()
+            if not self.finance:
+                self.finance = FinanceService(self.sonkwo.context)
+            print("✅ 所有系统组件启动成功，进入待命状态。")
             self.status["state"] = "RUNNING"
             return True
         except ConnectionError as e:
@@ -238,6 +243,11 @@ class ArbitrageCommander:
            - 进货端含有“Steam版”或“Steam Key”字样，而变现端只写了游戏名（如：古剑奇谭），这种情况应视为【同一个游戏】。
            - 变现端（SteamPy）本身就是基于 Steam 市场的，所以不需要重复确认“是否为 Steam 版”。
            - 只要游戏名称、版本（标准/豪华）匹配，分发渠道的描述差异可以忽略。
+        【特例放行清单】:
+            - 必须识别常见的官方中文翻译，例如：
+            * "异形工厂" 就是 "shapez.io"
+            * "双人成行" 就是 "It Takes Two"
+            * "泰拉瑞亚" 就是 "Terraria"
         输出要求：严格按下面两行格式输出，禁止任何前言和总结。
         判定: [结果]
         理由: [原因]
@@ -356,7 +366,8 @@ async def start_cruise_with_watchdog(commander, target_keyword):
         try:
             # 1. 尝试初始化
             await commander.init_all()
-            
+            while True:
+                await asyncio.sleep(5)
             # 2. 执行任务逻辑
             # 这里调用的是 commander 内部的方法
             await commander.run_mission(target_keyword)
@@ -396,16 +407,35 @@ async def main():
     target = sys.argv[1] if len(sys.argv) > 1 else ""
     commander = ArbitrageCommander()
     
-    # 获取 Web 服务启动任务
-    # 注意：run_web_server 内部应该通过 commander 引用来获取数据展示
-    from web_dashboard import run_web_server 
+    # 💡 暂时注释掉报错的 Web 引用
+    # from web_dashboard import run_web_server 
 
-    print("🛰️  Arbitrage Sentinel 双引擎准备就绪")
-    
-    # 并发运行：Dashboard 挂了不影响巡航，巡航重启不影响 Dashboard 访问
+    print("🛰️  Arbitrage Sentinel 引擎准备就绪")
+
+    # --- 🚀 交互指令监听任务 ---
+    async def input_loop():
+        # 给 Watchdog 一点初始化浏览器的时间
+        await asyncio.sleep(10) 
+        print("\n" + "🎮 " * 10)
+        print("【系统就绪】输入 'sync' 进入财务审计交互模式")
+        print("🎮 " * 10 + "\n")
+        
+        while True:
+            cmd_raw = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
+            cmd = cmd_raw.strip().lower()
+            
+            if cmd == "sync":
+                if commander.finance:
+                    await commander.finance.enter_interactive_mode()
+                else:
+                    print("❌ 财务服务尚未就绪（Watchdog 还在初始化...）")
+            elif cmd == "exit":
+                break
+
+    # --- 🚀 只运行巡航和监听 ---
     await asyncio.gather(
-        run_web_server(commander),                # 传入 commander 实例供 API 调用
-        start_cruise_with_watchdog(commander, target)
+        start_cruise_with_watchdog(commander, target),
+        input_loop()
     )
 
 if __name__ == "__main__":

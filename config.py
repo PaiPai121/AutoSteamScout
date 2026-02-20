@@ -1,4 +1,10 @@
 # config.py
+from pathlib import Path
+import os
+
+# 这行代码会自动获取 config.py 所在的文件夹路径
+PROJECT_ROOT = Path(__file__).resolve().parent
+
 
 # --- 审计与熔断阈值 ---
 AUDIT_CONFIG = {
