@@ -360,8 +360,8 @@ async def start_cruise_with_watchdog(commander, target_keyword):
         try:
             # 1. 尝试初始化
             await commander.init_all()
-            # while True:
-            #     await asyncio.sleep(5)
+            while True:
+                await asyncio.sleep(5)
             # 2. 执行任务逻辑
             # 这里调用的是 commander 内部的方法
             await commander.run_mission(target_keyword)

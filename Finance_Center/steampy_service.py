@@ -109,9 +109,16 @@ class SteamPyService:
                         my_p = (await price_els[2].text_content()).strip()
                         status = (await status_el.text_content()).strip() if status_el else "出售"
 
-                        print(f"{otime:<18} | {stock:<5} | {gname:<27} | {my_p} ({status})")
+                        safe_name = re.sub(r'[^\w]', '', gname)
+                        # 🚀 废弃价格敏感 ID，改用“时间+游戏名”的强唯一标识
+                        order_id = f"{otime.replace('-','').replace(':','').replace(' ','')}_{safe_name}"
+
+                        # print(f"[{order_id[-8:]}] {otime:<18} | {gname:<27} | {my_p} ({status})")
+
+                        # print(f"{otime:<18} | {stock:<5} | {gname:<27} | {my_p} ({status})")
 
                         all_entries.append({
+                            "order_id": order_id,
                             "order_time": otime, "name": gname, "stock": stock,
                             "market_price": market_p, "my_price": my_p, "status": status,
                             "sync_at": datetime.datetime.now().strftime("%H:%M:%S")
@@ -139,10 +146,27 @@ class SteamPyService:
                 await asyncio.sleep(2.5) 
 
             # 4. 全量持久化
+            # 4. 全量持久化（带合并逻辑）
             if all_entries:
+                # 🚀 【核心修复 B】：读取旧数据进行合并，而不是直接覆盖
+                existing_data = []
+                if os.path.exists(self.sales_file):
+                    try:
+                        with open(self.sales_file, "r", encoding="utf-8") as f:
+                            existing_data = json.load(f)
+                    except: pass
+                
+                # 使用字典去重：key 为 order_id，确保同一笔单子不重复，不同单子共存
+                full_map = { item.get("order_id", item["name"]): item for item in existing_data }
+                for new_item in all_entries:
+                    full_map[new_item["order_id"]] = new_item
+                
+                final_list = list(full_map.values())
+                
                 with open(self.sales_file, "w", encoding="utf-8") as f:
-                    json.dump(all_entries, f, ensure_ascii=False, indent=4)
-                print(f"✅ 同步成功：{len(all_entries)} 条记录已入库至 {self.sales_file}")
+                    json.dump(final_list, f, ensure_ascii=False, indent=4)
+                
+                print(f"✅ 同步成功：本轮抓取 {len(all_entries)} 条，库内当前存有 {len(final_list)} 条独立订单。")
                 return True
             return False
 

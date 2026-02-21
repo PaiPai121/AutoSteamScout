@@ -495,11 +495,34 @@ async def get_history_api():
         "history": AGENT_STATE.get("history", [])[:config.SCOUT_CONFIG["MAX_HISTORY"]]
     }
 
+# --- 1. 财务数据接口 ---
+@app.get("/api/audit_stats")
+async def get_audit_stats():
+    from Finance_Center.auditor import FinanceAuditor
+    # 直接调用你刚才写好的详细审计函数
+    return await FinanceAuditor().run_detailed_audit()
+
+# --- 5. 财务自动化闹钟 ---
+async def audit_watchdog():
+    """⏲️ 每小时自动捅一次审计接口，确保报表刷新"""
+    while True:
+        try:
+            # 💡 直接调用你已经写好的路由函数
+            # 因为它是 async def，所以直接 await 即可
+            logger.info("🕒 [后台指令] 正在触发例行财务对账...")
+            await get_audit_stats() 
+            logger.info("✅ [后台指令] 报表已更新。")
+        except Exception as e:
+            logger.error(f"🚨 [后台指令] 审计触发失败: {e}")
+        
+        # 每小时执行一次
+        await asyncio.sleep(360)
 
 @app.on_event("startup")
 async def startup():
     # 启动后台常驻任务
     asyncio.create_task(continuous_cruise())
+    asyncio.create_task(audit_watchdog())
 
 from fastapi.responses import FileResponse
 
@@ -542,12 +565,6 @@ async def web_post_game(request: Request):
 # 修改 FastAPI 初始化：
 # app = FastAPI(docs_url=None, redoc_url=None)
 
-# --- 1. 财务数据接口 ---
-@app.get("/api/audit_stats")
-async def get_audit_stats():
-    from Finance_Center.auditor import FinanceAuditor
-    # 直接调用你刚才写好的详细审计函数
-    return FinanceAuditor().run_detailed_audit()
 
 # --- 2. 财务全息看板（直接用 HTML 字符串返回，不建文件） ---
 @app.get("/audit", response_class=HTMLResponse)
@@ -579,6 +596,7 @@ async def sync_all_platforms():
                 # 同步完成后，通过飞书知会一声
                 status_ico = "✅" if result["status"] == "success" else "❌"
                 await global_commander.notifier.send_text(f"{status_ico} 跨平台同步反馈：{result['msg']}")
+                await get_audit_stats()
             finally:
                 del manager  # 销毁实例
                 gc.collect() # 强制收割内存碎屑

@@ -90,98 +90,87 @@ class FinanceService:
             return False
 
     async def action_fetch_ledger(self, page):
-        """[全息抓取] 穿透解析父子结构 + 自动跨页全量审计"""
+        """[全息抓取] 注入 UID 机制，解决一单多购与重复购买对账问题"""
         try:
-            # 1. 域名与坐标对齐
             if "setting/orders" not in page.url:
-                print("📡 [修正坐标] 正在强制重定向至订单中心...")
                 await page.goto("https://www.sonkwo.hk/setting/orders", wait_until="networkidle", timeout=30000)
 
             all_entries = []
             page_num = 1
 
             while True:
-                print(f"\n📄 [第 {page_num} 页] 正在扫描全息数据...")
-                print(f"{'订单号':<10} | {'下单时间':<18} | {'商品明细':<25} | {'状态':<10} | {'均摊成本'}")
-                print("-" * 105)
-
-                # A. 等待列表加载
+                print(f"\n📄 [第 {page_num} 页] 扫描中...")
+                
                 try:
                     await page.wait_for_selector(".self-order-item", timeout=10000)
-                except:
-                    print(f"🛑 第 {page_num} 页未检测到订单条目，扫描结束。")
-                    break
+                except: break
 
-                # B. 解析当前页所有订单 (沿用你最稳的解析逻辑)
                 order_blocks = await page.query_selector_all(".self-order-item")
                 for block in order_blocks:
+                    # 1. 提取基础订单信息
                     id_el = await block.query_selector(".msg-box.order-id span")
                     time_el = await block.query_selector(".msg-box.time span")
                     oid = (await id_el.text_content()).strip() if id_el else "0"
                     otime = (await time_el.text_content()).strip() if time_el else "Unknown"
 
                     if oid in self.blacklist:
-                        print(f"⏩ {oid:<10} | {otime:<18} | {'[自用订单-已拦截]':<25} | {'-'*10} | 🔒 排除")
                         continue
 
-                    # 价格穿透
+                    # 2. 提取订单总额
                     price_box = await block.query_selector(".msg-small-box:not(.handle-box)")
                     price_text = await price_box.text_content() if price_box else "0"
                     total_paid = float(re.sub(r'[^\d.]', '', price_text))
 
+                    # 3. 核心穿透：处理该订单下的所有子商品
                     sub_items = await block.query_selector_all(".img-hover-container")
                     count = len(sub_items) if sub_items else 1
+                    avg_cost = round(total_paid / count, 2)
 
-                    for item in sub_items:
+                    # 🚀 引入枚举序号，生成唯一 UID
+                    for idx, item in enumerate(sub_items):
                         name_el = await item.query_selector("p.name")
                         tag_el = await item.query_selector(".tag")
+                        
                         if name_el:
                             gname = (await name_el.text_content()).strip()
                             gstatus = (await tag_el.text_content()).strip() if tag_el else "已完成"
-                            avg_cost = round(total_paid / count, 2)
-
-                            status_ico = "✅" if "发货" in gstatus else "⚠️ "
-                            bundle_ico = " [合]" if count > 1 else ""
-                            print(f"{oid:<10} | {otime:<18} | {gname + bundle_ico:<27} | {status_ico + gstatus:<10} | ¥{avg_cost}")
+                            
+                            # 🎯 生成唯一标识符：SK_订单号_序号
+                            # 即使 order_id 相同，idx 也能区分出同一单里的不同商品
+                            unique_id = f"SK_{oid}_{idx}"
 
                             all_entries.append({
-                                "order_id": oid, "order_time": otime, "name": gname,
-                                "cost": avg_cost, "total_paid": total_paid, "status": gstatus,
-                                "is_bundle": count > 1, "sync_at": datetime.datetime.now().strftime("%H:%M:%S")
+                                "uid": unique_id,        # 👈 新增：财务对账的唯一索引
+                                "order_id": oid,
+                                "order_time": otime,
+                                "name": gname,
+                                "cost": avg_cost,
+                                "total_paid": total_paid,
+                                "status": gstatus,
+                                "is_bundle": count > 1,
+                                "sync_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             })
 
-                # C. 翻页判定
+                # --- 翻页判定逻辑 ---
                 next_btn = await page.query_selector(".ivu-page-next")
-                if not next_btn:
-                    print("🏁 页面无分页组件，全量抓取结束。")
-                    break
-                
-                # 检查“下一页”按钮是否已禁用
-                is_disabled = await page.evaluate('(el) => el.classList.contains("ivu-page-disabled")', next_btn)
-                if is_disabled:
-                    print(f"🏁 已到达末页，全量采集完成。共 {len(all_entries)} 条记录。")
+                if not next_btn or await page.evaluate('(el) => el.classList.contains("ivu-page-disabled")', next_btn):
                     break
 
-                # D. 执行翻页
-                print(f"🔜 正在前往第 {page_num + 1} 页...")
                 await next_btn.click()
                 page_num += 1
-                await asyncio.sleep(3) # 给 Vue 渲染列表留出呼吸时间
-                
-                # 截图存档（如果配置开启的话）
-                await self._log_and_shot(page, f"SONKWO_PAGE_{page_num}")
+                await asyncio.sleep(3) 
 
-            # 4. 全量落盘
-            print("-" * 105)
+            # 保存结果
             with open(self.ledger_file, "w", encoding="utf-8") as f:
                 json.dump(all_entries, f, ensure_ascii=False, indent=4)
-            print(f"📈 财务报表已全量更新，数据保存至: {self.ledger_file}")
+            
+            print(f"📈 审计完成！全量 UID 记录: {len(all_entries)} 条")
             return all_entries
 
         except Exception as e:
-            print(f"❌ [FETCH-ERROR] 全量审计崩溃: {str(e)}")
-            await self._log_and_shot(page, "FATAL_ERROR")
+            print(f"❌ [FETCH-ERROR] {str(e)}")
             return []
+
 
     async def enter_interactive_mode(self):
         """交互主循环"""
