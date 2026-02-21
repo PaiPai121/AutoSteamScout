@@ -516,7 +516,7 @@ async def audit_watchdog():
             logger.error(f"🚨 [后台指令] 审计触发失败: {e}")
         
         # 每小时执行一次
-        await asyncio.sleep(360)
+        await asyncio.sleep(config.RECON_INTERVAL)
 
 @app.on_event("startup")
 async def startup():

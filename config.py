@@ -9,6 +9,14 @@ DEBUG_MODE = False           # 总开关
 ENABLE_SCREENSHOTS = True   # 截图开关（建议默认关闭，爆内存元凶）
 SINGLE_PROCESS_MODE = True    # 强制 Chromium 单进程（节省内存神器）
 
+# --- 财务费率配置 ---
+# SteamPY 实际到手费率（扣除 3% 手续费后为 0.97）
+# 如果未来平台费率变动，只需修改此处
+PAYOUT_RATE = 0.97
+
+# 专门用于控制后台定时触发 get_audit_stats 的频率
+RECON_INTERVAL = 3600
+
 # --- 审计与熔断阈值 ---
 AUDIT_CONFIG = {
     "MIN_SCORE": 75,             # 最低好评率要求 (百分比)
