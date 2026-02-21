@@ -88,22 +88,12 @@ class ArbitrageCommander:
             # 如果你有 AGENT_STATE，可以更新它
             # AGENT_STATE["current_mission"] = f"错误: {e}"
             return False
-    
+        
     async def update_result(self, log_entry):
         if self.agent_state is not None:
-            # 💡 强制打印，确保 Commander 确实把数据发过来了
-            print(f"📡 [DATA_SYNC] 正在将 {log_entry['name']} 写入 Web 状态...")
-            self.agent_state["history"].insert(0, log_entry)
-            if len(self.agent_state["history"]) > 100:
-                self.agent_state["history"] = self.agent_state["history"][:100]
-        # if self.agent_state:
-        #     # 方案 B：去重覆盖逻辑
-        #     self.agent_state["history"] = [
-        #         h for h in self.agent_state["history"] 
-        #         if h['name'] != log_entry['name']
-        #     ]
-        #     self.agent_state["history"].insert(0, log_entry)
-        #     self.agent_state["history"] = self.agent_state["history"][:50]
+            # 💡 这里绝对不能执行 .append() 或 .insert()！
+            # 这里的目的只是为了让 commander 运行时不报错
+            print(f"📡 [DATA_SYNC] 情报已传回母舰: {log_entry['name']}")
 
     async def close_all(self):
         await self.sonkwo.stop()

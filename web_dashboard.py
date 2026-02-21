@@ -277,6 +277,11 @@ async def continuous_cruise():
     retry_count = 0
     base_cycle = config.SCOUT_CONFIG.get("BASE_CYCLE_TIME", 6000)
     jitter_val = config.SCOUT_CONFIG.get("JITTER_RANGE", 600)
+    def extract_profit_val(x): 
+        try: 
+            val = str(x.get('profit', '0')).replace('¥', '').strip()
+            return float(val) if val != '---' else -999.0
+        except: return -999.0
     while True:
         try:
             # 1. 引擎初始化
@@ -320,7 +325,6 @@ async def continuous_cruise():
                 target_modes = ["lowest", "new_lowest"]
                 # 💡 设置扫描深度：每类扫 3 页（大约覆盖 1000+ 商品）
                 max_pages = config.SCOUT_CONFIG["MAX_PAGES_PER_TASK"]
-                
                 for mode in target_modes: # 🚀 第一层：切换 史低/超史低
                     for task_keyword in search_tasks:
                         # 💡 新增：内层页码循环
@@ -345,36 +349,34 @@ async def continuous_cruise():
                                     logger.error(f"⚠️ 杉果扫描异常 (词:{task_keyword} 页:{p}): {e}")
                                     continue
 
-                            def extract_profit_val(x): 
-                                try: 
-                                    val = str(x.get('profit', '0')).replace('¥', '').strip()
-                                    return float(val) if val != '---' else -999.0
-                                except: return -999.0
                             # --- 处理当前页抓到的战利品 ---
                             for item in sk_results:
                                 log_entry = await global_commander.process_arbitrage_item(item)
                                 total_scanned_this_round += 1  
                                 
                                 if log_entry:
-                                    # 🚀 【核心改动：实时排序与去重】
-                                    # 1. 提取当前所有历史记录并建立去重映射
+                                    # --- 🚀 核心重排逻辑 ---
+                                    # 此时 history 是纯净的，不包含当前这个 log_entry
                                     unique_map = {h.get('name'): h for h in AGENT_STATE["history"]}
                                     g_name = log_entry.get('name')
+                                    curr_p = extract_profit_val(log_entry)
                                     
-                                    # 2. 判定：如果是新游戏，或发现更高利润，则更新并触发重排
-                                    # extract_profit_val 是你刚才定义的那个工具函数
-                                    if g_name not in unique_map or extract_profit_val(log_entry) > extract_profit_val(unique_map[g_name]):
+                                    # 判定：只有新游戏或更肥的利润才处理
+                                    if g_name not in unique_map or curr_p > extract_profit_val(unique_map[g_name]):
+                                        # 💡 手动把数据塞进 map
                                         unique_map[g_name] = log_entry
                                         
-                                        # 3. 立即重排：按利润从高到低
-                                        sorted_history = sorted(unique_map.values(), key=extract_profit_val, reverse=True)
+                                        # 🎯 立即执行数学意义上的全量排序
+                                        sorted_h = sorted(unique_map.values(), key=extract_profit_val, reverse=True)
                                         
-                                        # 4. 实时修剪内存并写回全局状态
-                                        AGENT_STATE["history"] = sorted_history[:config.SCOUT_CONFIG["MAX_HISTORY"]]
+                                        # 🔒 写回全局：这样 0.01 永远会在 -1.12 的上面
+                                        AGENT_STATE["history"] = sorted_h[:config.SCOUT_CONFIG["MAX_HISTORY"]]
                                         
-                                        # 5. 打印实时战报，让你在控制台能看到“跳变”
-                                        if extract_profit_val(log_entry) > 0:
-                                            print(f"🔥 [实时置顶] 发现高利润目标: {g_name} | 利润: {log_entry.get('profit')}")
+                                        # 打印排名确认
+                                        rank = next((i for i, h in enumerate(AGENT_STATE["history"]) if h['name'] == g_name), 999) + 1
+                                        color_tag = "🔥" if curr_p > 0 else "❄️"
+                                        print(f"{color_tag} [实时重排] {g_name} | 利润: {curr_p} | 排名: 第 {rank}")
+                                        
                                     # 1. 成功对齐计数
                                     if log_entry.get("py_price") and "¥" in str(log_entry.get("py_price")):
                                         match_count += 1
@@ -390,8 +392,8 @@ async def continuous_cruise():
                                     # 🚀 [新增：内存第一道防线]
                                     # 每新增一条记录，立即检查是否溢出，防止极端情况下内存暴涨
                                     max_h = config.SCOUT_CONFIG.get("MAX_HISTORY", 100)
-                                    if len(AGENT_STATE["history"]) > max_h * 2: # 允许暂存区稍微大一点，等会儿统一排序再精剪
-                                        AGENT_STATE["history"] = AGENT_STATE["history"][-max_h:]
+                                    # if len(AGENT_STATE["history"]) > max_h * 2: # 允许暂存区稍微大一点，等会儿统一排序再精剪
+                                    #     AGENT_STATE["history"] = AGENT_STATE["history"][-max_h:]
 
                 # 3. 🚨 简报发送逻辑 (此时变量已完成累加)
                 AGENT_STATE["scanned_count"] += 1 # 每次巡航完成，总进度+1
