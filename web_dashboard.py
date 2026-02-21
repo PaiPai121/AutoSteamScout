@@ -345,12 +345,36 @@ async def continuous_cruise():
                                     logger.error(f"⚠️ 杉果扫描异常 (词:{task_keyword} 页:{p}): {e}")
                                     continue
 
+                            def extract_profit_val(x): 
+                                try: 
+                                    val = str(x.get('profit', '0')).replace('¥', '').strip()
+                                    return float(val) if val != '---' else -999.0
+                                except: return -999.0
                             # --- 处理当前页抓到的战利品 ---
                             for item in sk_results:
                                 log_entry = await global_commander.process_arbitrage_item(item)
                                 total_scanned_this_round += 1  
                                 
                                 if log_entry:
+                                    # 🚀 【核心改动：实时排序与去重】
+                                    # 1. 提取当前所有历史记录并建立去重映射
+                                    unique_map = {h.get('name'): h for h in AGENT_STATE["history"]}
+                                    g_name = log_entry.get('name')
+                                    
+                                    # 2. 判定：如果是新游戏，或发现更高利润，则更新并触发重排
+                                    # extract_profit_val 是你刚才定义的那个工具函数
+                                    if g_name not in unique_map or extract_profit_val(log_entry) > extract_profit_val(unique_map[g_name]):
+                                        unique_map[g_name] = log_entry
+                                        
+                                        # 3. 立即重排：按利润从高到低
+                                        sorted_history = sorted(unique_map.values(), key=extract_profit_val, reverse=True)
+                                        
+                                        # 4. 实时修剪内存并写回全局状态
+                                        AGENT_STATE["history"] = sorted_history[:config.SCOUT_CONFIG["MAX_HISTORY"]]
+                                        
+                                        # 5. 打印实时战报，让你在控制台能看到“跳变”
+                                        if extract_profit_val(log_entry) > 0:
+                                            print(f"🔥 [实时置顶] 发现高利润目标: {g_name} | 利润: {log_entry.get('profit')}")
                                     # 1. 成功对齐计数
                                     if log_entry.get("py_price") and "¥" in str(log_entry.get("py_price")):
                                         match_count += 1
@@ -368,39 +392,6 @@ async def continuous_cruise():
                                     max_h = config.SCOUT_CONFIG.get("MAX_HISTORY", 100)
                                     if len(AGENT_STATE["history"]) > max_h * 2: # 允许暂存区稍微大一点，等会儿统一排序再精剪
                                         AGENT_STATE["history"] = AGENT_STATE["history"][-max_h:]
-
-                # --- 🛰️ [核心排序逻辑]：当轮战利品大排队 ---
-                if AGENT_STATE["history"]:
-                    def extract_profit_val(h_item):
-                        """辅助函数：提取利润数值用于排序"""
-                        try:
-                            # 提取利润字符串并清理符号，例如 '¥15.50' -> 15.5
-                            val = str(h_item.get('profit', '0')).replace('¥', '').strip()
-                            return float(val) if val != '---' else -999.0
-                        except:
-                            return -999.0
-
-                    # 1. 局部去重：防止同一个游戏在不同分类任务中重复出现
-                    unique_map = {}
-                    for h in AGENT_STATE["history"]:
-                        g_name = h.get('name')
-                        current_p = extract_profit_val(h)
-                        # 如果是新游戏，或者发现该游戏有更高的利润记录，则更新
-                        if g_name not in unique_map or current_p > extract_profit_val(unique_map[g_name]):
-                            unique_map[g_name] = h
-                    
-                    # 2. 执行排序：按利润从高到低排列 (reverse=True)
-                    sorted_list = list(unique_map.values())
-                    sorted_list.sort(key=extract_profit_val, reverse=True)
-                    
-                    # 3. 结果写回：同步到全局状态，只保留前 100 名最赚钱的目标
-                    AGENT_STATE["history"] = sorted_list[:config.SCOUT_CONFIG["MAX_HISTORY"]]
-                    
-                    # 💡 注意：虽然不跨重启，但这里调用 save_history() 可以方便你在运行期间随时查看 json
-                    save_history() 
-                    
-                    print(f"✅ 排序完成！当前榜首: {AGENT_STATE['history'][0].get('name')} | 利润: {AGENT_STATE['history'][0].get('profit')}")
-                # --- [排序结束] ---
 
                 # 3. 🚨 简报发送逻辑 (此时变量已完成累加)
                 AGENT_STATE["scanned_count"] += 1 # 每次巡航完成，总进度+1
@@ -483,61 +474,14 @@ async def check_game(name: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard(request: Request):
-    # --- 1. 历史数据渲染核心逻辑 ---
-    rows = ""
-    history_list = AGENT_STATE.get("history", [])
-    
-    # if not history_list:
-    #     # 初始无数据时的占位行
-    #     rows = "<tr><td colspan='7' style='text-align:center; padding:50px; color:#8b949e;'>🛰️ 侦察机巡航中，暂未发现利润目标...</td></tr>"
-    # else:
-    #     for h in history_list:
-    #         h_status = h.get('status', '未知状态')
-    #         # 判定盈利且审计通过的逻辑
-    #         is_profitable = "✅" in h_status
-    #         star_color = "#8b949e"
-    #         color = "#3fb950" if is_profitable else "#f85149"
-    #         raw_rating = h.get('rating', '---')
-    #         try:
-    #             # 提取数字进行颜色判定
-    #             r_val = float(str(raw_rating).replace('%', '')) if '%' in str(raw_rating) else 0
-    #             star_color = "#ffcc00" if r_val >= 90 else ("#3fb950" if r_val >= 80 else "#8b949e")
-    #         except:
-    #             star_color = "#8b949e"
-    #         rows += f"""
-    #         <tr>
-    #             <td>{h.get('time', '--:--:--')}</td>
-    #             <td>
-    #                 <div style="font-weight:bold; color:#f0f6fc;">{h.get('name', '未知商品')}</div>
-    #                 <div style="font-size:12px; color:{star_color}; margin-top:4px;">
-    #                     <span>⭐ Steam 好评: {raw_rating}</span>
-    #                 </div>
-    #             </td>
-    #             <td>{h.get('sk_price', '---')}</td>
-    #             <td style="color:#58a6ff; font-family:monospace; font-size:12px;">{h.get('py_price', '---')}</td>
-    #             <td style='color:{color}; font-weight:bold;'>{h.get('profit', '---')} <small>({h.get('roi','0%')})</small></td>
-    #             <td><span style="font-size:12px; opacity:0.8;">{h_status}</span><br><small style="color:#8b949e;">原因: {h.get('reason','无')}</small></td>
-    #             <td><a href="{h.get('url','#')}" target="_blank" style="color:#ffcc00; text-decoration:none;">🛒 进货</a></td>
-    #         </tr>
-    #         """
-    
-    
-    # 获取运行状态点颜色
-    dot_color = "#3fb950" if AGENT_STATE.get("is_running") else "#f85149"
-    
-    # --- 2. 完整 HTML/CSS/JS 全量恢复 ---
-    # --- 2. 核心变化：调用模板文件 ---
-    # 这里的 "base_dashboard.html" 对应你在 web/templates 下创建的文件
     return templates.TemplateResponse("base_dashboard.html", {
         "request": request,
-        "css_version": "1.0.1", # 随便写个版本号
-        "rows": rows,
-        "dot_color": dot_color,
-        "current_mission": AGENT_STATE.get('current_mission', '待命'),
+        "css_version": datetime.datetime.now().strftime("%H%M%S"), # 💡 动态版本号，强制刷新所有缓存
+        "dot_color": "#3fb950" if AGENT_STATE.get("is_running") else "#f85149",
+        "current_mission": AGENT_STATE.get('current_mission', '📡 连接中...'),
         "scanned_count": AGENT_STATE.get('scanned_count', 0),
-        "refresh_interval": config.WEB_CONFIG["REFRESH_INTERVAL"] # 👈 传过去
+        "refresh_interval": config.WEB_CONFIG["REFRESH_INTERVAL"]
     })
-
 
 @app.get("/api/history")
 async def get_history_api():

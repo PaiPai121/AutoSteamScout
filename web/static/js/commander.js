@@ -67,7 +67,8 @@ async function refreshDashboardData() {
         if (missionSpan) missionSpan.innerText = data.current_mission;
         if (countSpan) countSpan.innerText = `第 ${data.scanned_count} 次扫描`;
 
-        const tbody = document.querySelector('table tbody');
+        // commander.js 建议修改
+        const tbody = document.getElementById('history-table-body');
         if (!tbody) return;
 
         let newRows = "";
@@ -108,5 +109,12 @@ async function refreshDashboardData() {
         console.log("📡 [同步等待] 可能正在重启或信号干扰...");
     }
 }
+
+console.log("🚀 [SYSTEM] Commander 引擎点火...");
 refreshDashboardData();
-setInterval(refreshDashboardData, typeof RADAR_INTERVAL !== 'undefined' ? RADAR_INTERVAL : 5000);
+const pulse_rate = (window.SENTINEL_CONFIG && window.SENTINEL_CONFIG.radar_interval) ? window.SENTINEL_CONFIG.radar_interval : 5000;
+
+setInterval(() => {
+    console.log("📡 [RADAR] 雷达扫描中...");
+    refreshDashboardData();
+}, pulse_rate);

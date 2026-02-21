@@ -68,9 +68,12 @@
         </table>
     </div>
     <script>
-        // 捕获后端的配置，如果没传则默认 5 秒
-        const RADAR_INTERVAL = ({{ refresh_interval }} || 5) * 1000;
+        // 1. 优先注入核心配置
+        window.SENTINEL_CONFIG = {
+            radar_interval: (parseInt("{{ refresh_interval }}") || 5) * 1000
+        };
+        console.log("🛰️ [CONFIG] 母舰参数已注入:", window.SENTINEL_CONFIG);
     </script>
-    <script src="{{ url_for('static', path='js/commander.js') }}?v=2.5.1"></script>
+    <script src="/static/js/commander.js?v={{ css_version }}"></script>
 </body>
 </html>
