@@ -29,12 +29,12 @@ logger.setLevel(logging.DEBUG)
 app = FastAPI()
 from fastapi.templating import Jinja2Templates
 # 告诉 FastAPI 模板文件在 web/templates 文件夹里
-templates = Jinja2Templates(directory="web/templates")
+templates = Jinja2Templates(directory=config.WEB_CONFIG["TEMPLATE_DIR"])
 
 from fastapi.staticfiles import StaticFiles
 
 # 挂载静态文件目录
-app.mount("/static", StaticFiles(directory="web/static"), name="static")
+app.mount("/static", StaticFiles(directory=config.WEB_CONFIG["STATIC_DIR"]), name="static")
 
 global_commander = None # 全局 Commander 实例，供路由调用
 
@@ -47,7 +47,7 @@ AGENT_STATE = {
     "history": [] # 最近 50 条比价记录
 }
 
-HISTORY_FILE = os.path.join(ROOT_DIR, "arbitrage_history.json")
+HISTORY_FILE = config.PATH_CONFIG["HISTORY_FILE"]
 
 def save_history():
     """将历史记录持久化到磁盘 (原子性保护)"""
@@ -275,7 +275,8 @@ async def continuous_cruise():
     """具备‘看门狗’自愈能力的常驻巡航进程"""
     global global_commander
     retry_count = 0
-    cycle_time = 6000
+    base_cycle = config.SCOUT_CONFIG.get("BASE_CYCLE_TIME", 6000)
+    jitter_val = config.SCOUT_CONFIG.get("JITTER_RANGE", 600)
     while True:
         try:
             # 1. 引擎初始化
@@ -315,22 +316,10 @@ async def continuous_cruise():
                     logger.error(f"⚠️ 杉果扫描局部超时/异常: {e}")
                     await asyncio.sleep(30)
                     continue # 跳过本次循环，不重启引擎
-                # search_tasks = ["", "steam", "act", "rpg"] # 通过不同分类词带出更多结果
-                search_tasks = [
-                        "",           # 核心：全场史低/热门
-                        "steam",      # 重点：确保是 Steam 激活码（过滤掉育碧/其他平台）
-                        "action",     # 分类：动作类（受众广，变现快）
-                        "rpg",        # 分类：角色扮演（价格稳）
-                        "strategy",   # 分类：策略类
-                        "adventure",  # 分类：冒险类
-                        "indie",      # 蓝海：独立游戏（经常有高 ROI 的小目标）
-                        "ubisoft",    # 扩展：如果你也做育碧转单，可以开启
-                        "capcom",     # 厂商：卡普空（经常有大折扣）
-                        "bandai"      # 厂商：万代南梦宫
-                    ]
+                search_tasks = config.SCOUT_CONFIG["SEARCH_TASKS"]
                 target_modes = ["lowest", "new_lowest"]
                 # 💡 设置扫描深度：每类扫 3 页（大约覆盖 1000+ 商品）
-                max_pages = 3 # 💡 每类探测 3 页，覆盖约 600-900 个动态目标
+                max_pages = config.SCOUT_CONFIG["MAX_PAGES_PER_TASK"]
                 
                 for mode in target_modes: # 🚀 第一层：切换 史低/超史低
                     for task_keyword in search_tasks:
@@ -374,6 +363,11 @@ async def continuous_cruise():
                                             total_profit += float(p_str)
                                         except:
                                             pass
+                                    # 🚀 [新增：内存第一道防线]
+                                    # 每新增一条记录，立即检查是否溢出，防止极端情况下内存暴涨
+                                    max_h = config.SCOUT_CONFIG.get("MAX_HISTORY", 100)
+                                    if len(AGENT_STATE["history"]) > max_h * 2: # 允许暂存区稍微大一点，等会儿统一排序再精剪
+                                        AGENT_STATE["history"] = AGENT_STATE["history"][-max_h:]
 
                 # --- 🛰️ [核心排序逻辑]：当轮战利品大排队 ---
                 if AGENT_STATE["history"]:
@@ -400,7 +394,7 @@ async def continuous_cruise():
                     sorted_list.sort(key=extract_profit_val, reverse=True)
                     
                     # 3. 结果写回：同步到全局状态，只保留前 100 名最赚钱的目标
-                    AGENT_STATE["history"] = sorted_list[:100]
+                    AGENT_STATE["history"] = sorted_list[:config.SCOUT_CONFIG["MAX_HISTORY"]]
                     
                     # 💡 注意：虽然不跨重启，但这里调用 save_history() 可以方便你在运行期间随时查看 json
                     save_history() 
@@ -413,13 +407,13 @@ async def continuous_cruise():
                 # 3. 🚨 重点：在这里插入简报发送逻辑 (for 循环结束后)
                 end_time = datetime.datetime.now()
                 duration = (end_time - start_time).seconds
-                jitter = random.randint(-600, 600)
-                cycle_time += jitter
+                jitter = random.randint(-jitter_val, jitter_val)
+                cycle_time = base_cycle + jitter
                 # --- 🛰️ [新增]：提取本轮精锐名单 ---
                 top_targets = ""
                 if AGENT_STATE["history"]:
-                    # 只取前 3 个最赚钱且通过审计的目标
-                    for i, h in enumerate(AGENT_STATE["history"][:3]):
+                    # 只取前 10 个最赚钱且通过审计的目标
+                    for i, h in enumerate(AGENT_STATE["history"][:10]):
                         if "✅" in h.get('status', ''):
                             top_targets += f"🎯 {h.get('name')} | 利润: {h.get('profit')}\n"
                 
@@ -493,39 +487,40 @@ async def get_dashboard(request: Request):
     rows = ""
     history_list = AGENT_STATE.get("history", [])
     
-    if not history_list:
-        # 初始无数据时的占位行
-        rows = "<tr><td colspan='7' style='text-align:center; padding:50px; color:#8b949e;'>🛰️ 侦察机巡航中，暂未发现利润目标...</td></tr>"
-    else:
-        for h in history_list:
-            h_status = h.get('status', '未知状态')
-            # 判定盈利且审计通过的逻辑
-            is_profitable = "✅" in h_status
-            star_color = "#8b949e"
-            color = "#3fb950" if is_profitable else "#f85149"
-            raw_rating = h.get('rating', '---')
-            try:
-                # 提取数字进行颜色判定
-                r_val = float(str(raw_rating).replace('%', '')) if '%' in str(raw_rating) else 0
-                star_color = "#ffcc00" if r_val >= 90 else ("#3fb950" if r_val >= 80 else "#8b949e")
-            except:
-                star_color = "#8b949e"
-            rows += f"""
-            <tr>
-                <td>{h.get('time', '--:--:--')}</td>
-                <td>
-                    <div style="font-weight:bold; color:#f0f6fc;">{h.get('name', '未知商品')}</div>
-                    <div style="font-size:12px; color:{star_color}; margin-top:4px;">
-                        <span>⭐ Steam 好评: {raw_rating}</span>
-                    </div>
-                </td>
-                <td>{h.get('sk_price', '---')}</td>
-                <td style="color:#58a6ff; font-family:monospace; font-size:12px;">{h.get('py_price', '---')}</td>
-                <td style='color:{color}; font-weight:bold;'>{h.get('profit', '---')} <small>({h.get('roi','0%')})</small></td>
-                <td><span style="font-size:12px; opacity:0.8;">{h_status}</span><br><small style="color:#8b949e;">原因: {h.get('reason','无')}</small></td>
-                <td><a href="{h.get('url','#')}" target="_blank" style="color:#ffcc00; text-decoration:none;">🛒 进货</a></td>
-            </tr>
-            """
+    # if not history_list:
+    #     # 初始无数据时的占位行
+    #     rows = "<tr><td colspan='7' style='text-align:center; padding:50px; color:#8b949e;'>🛰️ 侦察机巡航中，暂未发现利润目标...</td></tr>"
+    # else:
+    #     for h in history_list:
+    #         h_status = h.get('status', '未知状态')
+    #         # 判定盈利且审计通过的逻辑
+    #         is_profitable = "✅" in h_status
+    #         star_color = "#8b949e"
+    #         color = "#3fb950" if is_profitable else "#f85149"
+    #         raw_rating = h.get('rating', '---')
+    #         try:
+    #             # 提取数字进行颜色判定
+    #             r_val = float(str(raw_rating).replace('%', '')) if '%' in str(raw_rating) else 0
+    #             star_color = "#ffcc00" if r_val >= 90 else ("#3fb950" if r_val >= 80 else "#8b949e")
+    #         except:
+    #             star_color = "#8b949e"
+    #         rows += f"""
+    #         <tr>
+    #             <td>{h.get('time', '--:--:--')}</td>
+    #             <td>
+    #                 <div style="font-weight:bold; color:#f0f6fc;">{h.get('name', '未知商品')}</div>
+    #                 <div style="font-size:12px; color:{star_color}; margin-top:4px;">
+    #                     <span>⭐ Steam 好评: {raw_rating}</span>
+    #                 </div>
+    #             </td>
+    #             <td>{h.get('sk_price', '---')}</td>
+    #             <td style="color:#58a6ff; font-family:monospace; font-size:12px;">{h.get('py_price', '---')}</td>
+    #             <td style='color:{color}; font-weight:bold;'>{h.get('profit', '---')} <small>({h.get('roi','0%')})</small></td>
+    #             <td><span style="font-size:12px; opacity:0.8;">{h_status}</span><br><small style="color:#8b949e;">原因: {h.get('reason','无')}</small></td>
+    #             <td><a href="{h.get('url','#')}" target="_blank" style="color:#ffcc00; text-decoration:none;">🛒 进货</a></td>
+    #         </tr>
+    #         """
+    
     
     # 获取运行状态点颜色
     dot_color = "#3fb950" if AGENT_STATE.get("is_running") else "#f85149"
@@ -539,7 +534,8 @@ async def get_dashboard(request: Request):
         "rows": rows,
         "dot_color": dot_color,
         "current_mission": AGENT_STATE.get('current_mission', '待命'),
-        "scanned_count": AGENT_STATE.get('scanned_count', 0)
+        "scanned_count": AGENT_STATE.get('scanned_count', 0),
+        "refresh_interval": config.WEB_CONFIG["REFRESH_INTERVAL"] # 👈 传过去
     })
 
 
@@ -550,7 +546,7 @@ async def get_history_api():
         "scanned_count": AGENT_STATE.get("scanned_count", 0),
         "current_mission": AGENT_STATE.get("current_mission", "待命"),
         "is_running": AGENT_STATE.get("is_running", False),
-        "history": AGENT_STATE.get("history", [])[:50]
+        "history": AGENT_STATE.get("history", [])[:config.SCOUT_CONFIG["MAX_HISTORY"]]
     }
 
 
@@ -645,5 +641,12 @@ async def sync_all_platforms():
     asyncio.create_task(background_sync())
     return {"status": "success", "msg": "📡 指令已下达，正在后台静默同步..."}
 
+# if __name__ == "__main__":
+#     uvicorn.run(app, host="0.0.0.0", port=8000)
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        "web_dashboard:app", 
+        host=config.WEB_CONFIG["HOST"], 
+        port=config.WEB_CONFIG["PORT"], 
+        reload=config.DEBUG_MODE  # 对接到顶层的 DEBUG_MODE
+    )

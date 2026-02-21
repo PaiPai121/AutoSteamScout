@@ -58,10 +58,19 @@
                     <th class="w-70">操作</th>
                 </tr>
             </thead>
-            <tbody>{{ rows|safe }}</tbody>
+            <tbody id="history-table-body">
+                <tr>
+                    <td colspan="7" style="text-align:center; padding:50px; color:#8b949e;">
+                        📡 正在连接母舰全息链路，调取实时战报...
+                    </td>
+                </tr>
+            </tbody>
         </table>
     </div>
-
-    <script src="{{ url_for('static', path='js/commander.js') }}"></script>
+    <script>
+        // 捕获后端的配置，如果没传则默认 5 秒
+        const RADAR_INTERVAL = ({{ refresh_interval }} || 5) * 1000;
+    </script>
+    <script src="{{ url_for('static', path='js/commander.js') }}?v=2.5.1"></script>
 </body>
 </html>

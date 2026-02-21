@@ -22,6 +22,15 @@ SCOUT_CONFIG = {
     "SLEEP_INTERVAL": 1.0,       # 巡航项之间的间隔 (秒)
     "MAX_HISTORY": 100,          # Web 历史记录保存上限
     "RETRY_COUNT": 3,            # AI 接口或网络请求重试次数
+    # 💡 [新增]：巡航分类词任务清单
+    "SEARCH_TASKS": [
+        "", "steam", "action", "rpg", "strategy", 
+        "adventure", "indie", "capcom", "bandai"
+    ],
+    # 💡 [新增]：单任务扫描深度 (页数)
+    "MAX_PAGES_PER_TASK": 3,
+    "BASE_CYCLE_TIME": 6000,      # 基础巡航周期 (秒)
+    "JITTER_RANGE": 600,          # 随机抖动范围 (秒)，即基础值 ±600s
 }
 
 # --- 飞书通知 ---
@@ -42,4 +51,10 @@ WEB_CONFIG = {
     "REFRESH_INTERVAL": 5,        # 前端雷达刷新频率 (秒)
     "STATIC_DIR": "web/static",   # 静态资源目录
     "TEMPLATE_DIR": "web/templates", # 模板目录
+}
+
+PATH_CONFIG = {
+    "DB_NAME": "steamspy_all.json",
+    "HISTORY_FILE": os.path.join(PROJECT_ROOT, "arbitrage_history.json"),
+    "LOG_DIR": os.path.join(PROJECT_ROOT, "logs"),
 }

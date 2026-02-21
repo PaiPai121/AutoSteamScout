@@ -57,19 +57,16 @@ async function checkProfit() {
     finally { btn.innerText = '开始侦察'; btn.disabled = false; }
 }
 
-// --- 🔄 核心：全息静默刷新逻辑 ---
 async function refreshDashboardData() {
     try {
         const res = await fetch('/api/history');
         const data = await res.json();
 
-        // 1. 更新顶部文字 (根据刚才加的 ID)
         const missionSpan = document.getElementById('current-mission-text');
         const countSpan = document.getElementById('scanned-count-text');
         if (missionSpan) missionSpan.innerText = data.current_mission;
         if (countSpan) countSpan.innerText = `第 ${data.scanned_count} 次扫描`;
 
-        // 2. 更新表格
         const tbody = document.querySelector('table tbody');
         if (!tbody) return;
 
@@ -85,7 +82,6 @@ async function refreshDashboardData() {
                 if (rVal >= 90) starColor = "#ffcc00";
                 else if (rVal >= 80) starColor = "#3fb950";
 
-                // 💡 这里的 HTML 结构必须和你 Python 里的字符串拼写完全一致
                 newRows += `
                 <tr>
                     <td>${h.time || '--:--:--'}</td>
@@ -104,7 +100,6 @@ async function refreshDashboardData() {
             });
         }
         
-        // 只有内容变了才刷，防止闪烁
         if (tbody.innerHTML !== newRows) {
             tbody.innerHTML = newRows;
         }
@@ -113,6 +108,5 @@ async function refreshDashboardData() {
         console.log("📡 [同步等待] 可能正在重启或信号干扰...");
     }
 }
-
-// 启动循环：每 5 秒自动同步一次后端数据
-setInterval(refreshDashboardData, 5000);
+refreshDashboardData();
+setInterval(refreshDashboardData, typeof RADAR_INTERVAL !== 'undefined' ? RADAR_INTERVAL : 5000);
