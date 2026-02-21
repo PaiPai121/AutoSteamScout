@@ -784,11 +784,17 @@ async def sync_all_platforms():
     async def background_sync():
         # 使用 global_commander 的锁，防止同步时干扰正在进行的自动巡航
         async with global_commander.lock:
-            manager = SyncManager(global_commander)
-            result = await manager.run_full_sync()
-            # 同步完成后，通过飞书知会一声
-            status_ico = "✅" if result["status"] == "success" else "❌"
-            await global_commander.notifier.send_text(f"{status_ico} 跨平台同步反馈：{result['msg']}")
+            await asyncio.sleep(2)
+            import gc
+            try:
+                manager = SyncManager(global_commander)
+                result = await manager.run_full_sync()
+                # 同步完成后，通过飞书知会一声
+                status_ico = "✅" if result["status"] == "success" else "❌"
+                await global_commander.notifier.send_text(f"{status_ico} 跨平台同步反馈：{result['msg']}")
+            finally:
+                del manager  # 销毁实例
+                gc.collect() # 强制收割内存碎屑
 
     # 挂载后台任务，立即给前端返回“已开始”
     asyncio.create_task(background_sync())

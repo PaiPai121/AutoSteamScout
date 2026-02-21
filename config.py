@@ -4,7 +4,10 @@ import os
 
 # 这行代码会自动获取 config.py 所在的文件夹路径
 PROJECT_ROOT = Path(__file__).resolve().parent
-
+# --- 资源与调试控制 ---
+DEBUG_MODE = False           # 总开关
+ENABLE_SCREENSHOTS = True   # 截图开关（建议默认关闭，爆内存元凶）
+SINGLE_PROCESS_MODE = True    # 强制 Chromium 单进程（节省内存神器）
 
 # --- 审计与熔断阈值 ---
 AUDIT_CONFIG = {

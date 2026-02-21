@@ -20,8 +20,14 @@ class SyncManager:
         try:
             # --- 阶段 A: 杉果订单同步 ---
             print("📍 [1/2] 正在提取杉果采购成本...")
-            await self.sonkwo.action_fetch_ledger(sync_page)
-            
+            # await self.sonkwo.action_fetch_ledger(sync_page)
+            is_ready = await self.sonkwo.action_verify_and_goto_orders(sync_page)
+            if is_ready:
+                print("✅ 杉果着陆成功，开始全息抓取...")
+                await self.sonkwo.action_fetch_ledger(sync_page)
+            else:
+                print("❌ 杉果着陆失败（可能登录失效或网络波动），跳过此步")
+                
             await asyncio.sleep(3) # 缓冲间隔
 
             # --- 阶段 B: SteamPY 挂单同步 ---

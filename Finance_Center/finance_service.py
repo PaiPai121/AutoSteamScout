@@ -4,7 +4,7 @@ import os
 import re
 import json
 import datetime
-
+import config
 class FinanceService:
     def __init__(self, context):
         self.context = context
@@ -33,6 +33,8 @@ class FinanceService:
             json.dump(list(self.blacklist), f, ensure_ascii=False, indent=4)
 
     async def _log_and_shot(self, page, action_name):
+        if not getattr(config, "ENABLE_SCREENSHOTS", False):
+            return
         """📸 视觉存档：截图 + 源码落地"""
         self.step_idx += 1
         try:
@@ -88,40 +90,45 @@ class FinanceService:
             return False
 
     async def action_fetch_ledger(self, page):
-        """🚀 [杉果全量审计] 自动跨页抓取所有历史订单"""
+        """[全息抓取] 穿透解析父子结构 + 自动跨页全量审计"""
         try:
-            print("\n" + "📊 " * 15)
-            print(f"{'订单号':<10} | {'下单时间':<18} | {'商品名称':<25} | {'状态':<10} | {'均摊成本'}")
-            print("-" * 105)
+            # 1. 域名与坐标对齐
+            if "setting/orders" not in page.url:
+                print("📡 [修正坐标] 正在强制重定向至订单中心...")
+                await page.goto("https://www.sonkwo.hk/setting/orders", wait_until="networkidle", timeout=30000)
 
             all_entries = []
             page_num = 1
 
             while True:
-                print(f"📄 正在扫描杉果第 {page_num} 页...")
-                # 等待订单块加载
-                await page.wait_for_selector(".self-order-item", timeout=10000)
+                print(f"\n📄 [第 {page_num} 页] 正在扫描全息数据...")
+                print(f"{'订单号':<10} | {'下单时间':<18} | {'商品明细':<25} | {'状态':<10} | {'均摊成本'}")
+                print("-" * 105)
+
+                # A. 等待列表加载
+                try:
+                    await page.wait_for_selector(".self-order-item", timeout=10000)
+                except:
+                    print(f"🛑 第 {page_num} 页未检测到订单条目，扫描结束。")
+                    break
+
+                # B. 解析当前页所有订单 (沿用你最稳的解析逻辑)
                 order_blocks = await page.query_selector_all(".self-order-item")
-                
                 for block in order_blocks:
-                    # 1. 提取订单号
                     id_el = await block.query_selector(".msg-box.order-id span")
+                    time_el = await block.query_selector(".msg-box.time span")
                     oid = (await id_el.text_content()).strip() if id_el else "0"
-                    
-                    # 🚫 黑名单拦截
+                    otime = (await time_el.text_content()).strip() if time_el else "Unknown"
+
                     if oid in self.blacklist:
-                        print(f"⏩ {oid:<10} | {'-'*18} | {'[已拦截-自用订单]':<25} | {'-'*10} | 🔒 排除")
+                        print(f"⏩ {oid:<10} | {otime:<18} | {'[自用订单-已拦截]':<25} | {'-'*10} | 🔒 排除")
                         continue
 
-                    # 2. 基本元数据
-                    time_el = await block.query_selector(".msg-box.time span")
-                    otime = (await time_el.text_content()).strip() if time_el else "Unknown"
-                    
+                    # 价格穿透
                     price_box = await block.query_selector(".msg-small-box:not(.handle-box)")
                     price_text = await price_box.text_content() if price_box else "0"
                     total_paid = float(re.sub(r'[^\d.]', '', price_text))
 
-                    # 3. 穿透子商品
                     sub_items = await block.query_selector_all(".img-hover-container")
                     count = len(sub_items) if sub_items else 1
 
@@ -132,46 +139,49 @@ class FinanceService:
                             gname = (await name_el.text_content()).strip()
                             gstatus = (await tag_el.text_content()).strip() if tag_el else "已完成"
                             avg_cost = round(total_paid / count, 2)
-                            
+
                             status_ico = "✅" if "发货" in gstatus else "⚠️ "
-                            print(f"{oid:<10} | {otime:<18} | {gname:<27} | {status_ico + gstatus:<10} | ¥{avg_cost}")
+                            bundle_ico = " [合]" if count > 1 else ""
+                            print(f"{oid:<10} | {otime:<18} | {gname + bundle_ico:<27} | {status_ico + gstatus:<10} | ¥{avg_cost}")
 
                             all_entries.append({
                                 "order_id": oid, "order_time": otime, "name": gname,
                                 "cost": avg_cost, "total_paid": total_paid, "status": gstatus,
-                                "is_bundle": count > 1, "source": "Sonkwo", "sync_at": datetime.datetime.now().strftime("%H:%M:%S")
+                                "is_bundle": count > 1, "sync_at": datetime.datetime.now().strftime("%H:%M:%S")
                             })
 
-                # 4. 翻页逻辑：寻找下一页按钮
+                # C. 翻页判定
                 next_btn = await page.query_selector(".ivu-page-next")
                 if not next_btn:
-                    print("🏁 未发现分页器，单页扫描结束。")
+                    print("🏁 页面无分页组件，全量抓取结束。")
                     break
                 
-                # 检查是否已到最后一页
-                btn_class = await next_btn.get_attribute("class")
-                if "ivu-page-disabled" in btn_class:
-                    print(f"🏁 已到达杉果末页 (共 {page_num} 页)")
+                # 检查“下一页”按钮是否已禁用
+                is_disabled = await page.evaluate('(el) => el.classList.contains("ivu-page-disabled")', next_btn)
+                if is_disabled:
+                    print(f"🏁 已到达末页，全量采集完成。共 {len(all_entries)} 条记录。")
                     break
-                
-                # 执行翻页
+
+                # D. 执行翻页
+                print(f"🔜 正在前往第 {page_num + 1} 页...")
                 await next_btn.click()
                 page_num += 1
-                await asyncio.sleep(3) # 等待 Vue 重新渲染列表
+                await asyncio.sleep(3) # 给 Vue 渲染列表留出呼吸时间
+                
+                # 截图存档（如果配置开启的话）
                 await self._log_and_shot(page, f"SONKWO_PAGE_{page_num}")
 
-            # 5. 落盘保存
+            # 4. 全量落盘
+            print("-" * 105)
             with open(self.ledger_file, "w", encoding="utf-8") as f:
                 json.dump(all_entries, f, ensure_ascii=False, indent=4)
-            
-            print("-" * 105)
-            print(f"📈 杉果全量同步完成：共存入 {len(all_entries)} 条原始记录")
+            print(f"📈 财务报表已全量更新，数据保存至: {self.ledger_file}")
             return all_entries
 
         except Exception as e:
-            print(f"❌ 杉果抓取崩溃: {e}")
+            print(f"❌ [FETCH-ERROR] 全量审计崩溃: {str(e)}")
+            await self._log_and_shot(page, "FATAL_ERROR")
             return []
-
 
     async def enter_interactive_mode(self):
         """交互主循环"""
