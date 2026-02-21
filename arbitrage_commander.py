@@ -7,6 +7,7 @@ import re
 import config
 from pathlib import Path
 from Finance_Center.finance_service import FinanceService
+from Finance_Center.steampy_service import SteamPyService  # ✅ 新增这一行
 
 # --- 🚀 路径自愈逻辑 ---
 # 强制定位当前脚本所在的绝对路径为根目录
@@ -61,6 +62,7 @@ class ArbitrageCommander:
             "current_mission": "等待指令"
         }
         self.finance = None
+        self.steampy_center = None
 
     async def init_all(self):
         self.status["state"] = "INITIALIZING"
@@ -75,6 +77,8 @@ class ArbitrageCommander:
             await self.steampy.start()
             if not self.finance:
                 self.finance = FinanceService(self.sonkwo.context)
+            if not self.steampy_center:
+                self.steampy_center = SteamPyService(self.steampy.context)
             print("✅ 所有系统组件启动成功，进入待命状态。")
             self.status["state"] = "RUNNING"
             return True
@@ -366,8 +370,8 @@ async def start_cruise_with_watchdog(commander, target_keyword):
         try:
             # 1. 尝试初始化
             await commander.init_all()
-            while True:
-                await asyncio.sleep(5)
+            # while True:
+            #     await asyncio.sleep(5)
             # 2. 执行任务逻辑
             # 这里调用的是 commander 内部的方法
             await commander.run_mission(target_keyword)
@@ -431,6 +435,11 @@ async def main():
                     print("❌ 财务服务尚未就绪（Watchdog 还在初始化...）")
             elif cmd == "exit":
                 break
+            elif cmd == "py":  # 比如输入 py 进入 SteamPy 模块
+                if commander.steampy_center:
+                    await commander.steampy_center.enter_interactive_mode()
+                else:
+                    print("❌ SteamPy 服务尚未就绪（Watchdog 还在初始化...）")
 
     # --- 🚀 只运行巡航和监听 ---
     await asyncio.gather(

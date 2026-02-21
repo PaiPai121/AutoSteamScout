@@ -590,6 +590,9 @@ async def get_dashboard():
                 <h2 style="margin:0; color:var(--main-gold);">🛰️ SENTINEL V2.5 战略指挥中心</h2>
             </div>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                <button id="syncBtn" onclick="triggerSync()" style="background:#3fb950; color:white; padding: 8px 20px; border-radius: 4px; font-weight:bold; cursor:pointer; border:none;">
+                    🔄 一键全平台资产同步
+                </button>
                 <div>📍 当前任务: <span style="color:#fff;">{AGENT_STATE.get('current_mission', '待命')}</span></div>
                 <div>📊 巡航统计: <span style="color:#fff;">第 {AGENT_STATE.get('scanned_count', 0)} 次扫描</span></div>
             </div>
@@ -614,6 +617,40 @@ async def get_dashboard():
             </div>
             <div id="postStatus" style="margin-top: 10px; font-size: 13px; font-family: monospace;"></div>
         </div>
+
+        <script>
+        async function triggerSync() {{
+            console.log("📡 [SENTINEL] 同步指令发射...");
+            const btn = document.getElementById('syncBtn');
+            
+            if (!confirm("⚠️ 同步将接管浏览器执行审计，预计耗时1-3分钟。是否继续？")) return;
+
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.innerText = '⏳ 任务排队中...';
+            
+            try {{
+                // 💡 重点：这里的四重括号确保 Python 解析后，JS 看到的是正常的 {{{{ method: 'POST' }}}}
+                const res = await fetch('/api/sync_all', {{ method: 'POST' }});
+                const data = await res.json();
+                
+                if (data.status === 'success') {{
+                    alert("🛰️ 指令已下达！\\n母舰正在后台同步，完成后将发送飞书回执。");
+                }} else {{
+                    alert("❌ 失败: " + data.msg);
+                }}
+            }} catch(e) {{
+                console.error(e);
+                alert("🚨 信号中断：无法连接至主服务器。");
+            }} finally {{
+                setTimeout(() => {{
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    btn.innerText = '🔄 一键全平台资产同步';
+                }}, 5000);
+            }}
+        }}
+        </script>
 
         <script>
         async function submitPost() {{
@@ -730,6 +767,32 @@ async def web_post_game(request: Request):
 # 2. 隐藏 API 文档（防止爬虫扫描接口定义）
 # 修改 FastAPI 初始化：
 # app = FastAPI(docs_url=None, redoc_url=None)
+
+# --- 在文件顶部导入区添加 ---
+from Finance_Center.sync_manager import SyncManager  # 确保路径正确
+
+# --- 在 FastAPI 路由定义区添加同步接口 ---
+
+@app.post("/api/sync_all")
+async def sync_all_platforms():
+    """🚀 一键同步按钮的后端实现"""
+    global global_commander
+    print("⏳ 同步指令已排队，等待当前巡航任务交出浏览器控制权...")
+    if not global_commander:
+        return {"status": "error", "msg": "❌ 引擎尚未初始化，请刷新页面重试"}
+
+    async def background_sync():
+        # 使用 global_commander 的锁，防止同步时干扰正在进行的自动巡航
+        async with global_commander.lock:
+            manager = SyncManager(global_commander)
+            result = await manager.run_full_sync()
+            # 同步完成后，通过飞书知会一声
+            status_ico = "✅" if result["status"] == "success" else "❌"
+            await global_commander.notifier.send_text(f"{status_ico} 跨平台同步反馈：{result['msg']}")
+
+    # 挂载后台任务，立即给前端返回“已开始”
+    asyncio.create_task(background_sync())
+    return {"status": "success", "msg": "📡 指令已下达，正在后台静默同步..."}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
