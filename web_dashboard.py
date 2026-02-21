@@ -26,6 +26,15 @@ logger.setLevel(logging.DEBUG)
 
 # --- 3. 状态管理与全局实例 ---
 app = FastAPI()
+from fastapi.templating import Jinja2Templates
+# 告诉 FastAPI 模板文件在 web/templates 文件夹里
+templates = Jinja2Templates(directory="web/templates")
+
+from fastapi.staticfiles import StaticFiles
+
+# 挂载静态文件目录
+app.mount("/static", StaticFiles(directory="web/static"), name="static")
+
 global_commander = None # 全局 Commander 实例，供路由调用
 
 AGENT_STATE = {
@@ -478,7 +487,7 @@ async def check_game(name: str):
     return {"report": "🚨 引擎尚未初始化，请稍后再试"}
 
 @app.get("/", response_class=HTMLResponse)
-async def get_dashboard():
+async def get_dashboard(request: Request):
     # --- 1. 历史数据渲染核心逻辑 ---
     rows = ""
     history_list = AGENT_STATE.get("history", [])
@@ -521,211 +530,15 @@ async def get_dashboard():
     dot_color = "#3fb950" if AGENT_STATE.get("is_running") else "#f85149"
     
     # --- 2. 完整 HTML/CSS/JS 全量恢复 ---
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>SENTINEL V2 | 战略指挥中心</title>
-        <meta charset="utf-8">
-        <style>
-            :root {{ --main-gold: #ffcc00; --bg-dark: #0d1117; --border: #30363d; }}
-            body {{ background: var(--bg-dark); color: #c9d1d9; font-family: 'Segoe UI', system-ui, sans-serif; padding:20px; line-height:1.5; }}
-            .panel {{ background: #161b22; border: 1px solid var(--border); padding:20px; border-radius:8px; margin-bottom:20px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }}
-            .status-bar {{ display:flex; align-items:center; gap:15px; margin-bottom:10px; }}
-            .dot {{ height:12px; width:12px; background:{dot_color}; border-radius:50%; box-shadow: 0 0 8px {dot_color}; }}
-            
-            /* 表格布局调整：为 Top 5 价格留出专用宽度 */
-            /* --- 🛰️ 战术表格改良：解除截断限制 --- */
-            table {{ 
-                width:100%; 
-                border-collapse:separate; 
-                border-spacing:0; 
-                margin-top:10px; 
-                table-layout: auto; /* 💡 允许表格根据内容自适应宽度 */
-            }}
-            
-            th {{ 
-                background: #21262d; 
-                padding:12px; 
-                text-align:left; 
-                border-bottom: 2px solid var(--main-gold); 
-                color: var(--main-gold); 
-                white-space: nowrap; 
-            }}
-            
-            td {{ 
-                padding:12px; 
-                border-bottom:1px solid var(--border); 
-                /* 💡 关键：允许换行，去掉 ellipsis 截断 */
-                white-space: normal !important;  
-                word-break: break-all; 
-                overflow: visible !important;
-                text-overflow: clip !important;
-                vertical-align: top;
-            }}
-
-            /* 第四列（SteamPy Top5）锁定宽度 */
-            td:nth-child(2) {{ min-width: 150px; font-weight: bold; }} /* 游戏实体 */
-            td:nth-child(4) {{ width: 200px; color: #58a6ff; font-family: monospace; font-size: 12px; }} /* Top5 价格 */
-            td:nth-child(6) {{ min-width: 250px; font-size: 13px; }} /* AI 审计 */
-
-            tr:hover {{ background: #21262d; }}
-            
-            /* 搜索框与交互组件 */
-            .search-box {{ display:flex; gap:10px; margin-top:15px; }}
-            input {{ background:#0d1117; color:#fff; border:1px solid var(--border); padding:10px; border-radius:4px; flex-grow:1; outline:none; }}
-            input:focus {{ border-color: var(--main-gold); }}
-            button {{ background:var(--main-gold); color:#000; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold; transition: 0.2s; }}
-            button:hover {{ opacity: 0.8; }}
-            button:disabled {{ background: #444; color: #888; cursor: not-allowed; }}
-            
-            /* AI 审计结论实时反馈区 */
-            #resultArea {{ background:#000; color:#0ff; padding:15px; border-radius:4px; margin-top:15px; border-left:4px solid var(--main-gold); display:none; white-space: pre-wrap; font-family: monospace; font-size: 13px; }}
-        </style>
-    </head>
-    <body>
-        <div class="panel">
-            <div class="status-bar">
-                <div class="dot"></div>
-                <h2 style="margin:0; color:var(--main-gold); display:flex; align-items:center; gap:20px;">
-                    🛰️ SENTINEL V2.5 战略指挥中心
-                    <button onclick="window.open('/audit', '_blank')" style="background:#58a6ff; color:white; padding: 5px 15px; border-radius: 4px; border:none; cursor:pointer; font-size:14px; font-family:sans-serif;">
-                        📊 财务全息审计报告
-                    </button>
-                </h2>
-            </div>
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-                <button id="syncBtn" onclick="triggerSync()" style="background:#3fb950; color:white; padding: 8px 20px; border-radius: 4px; font-weight:bold; cursor:pointer; border:none;">
-                    🔄 一键全平台资产同步
-                </button>
-                <div>📍 当前任务: <span style="color:#fff;">{AGENT_STATE.get('current_mission', '待命')}</span></div>
-                <div>📊 巡航统计: <span style="color:#fff;">第 {AGENT_STATE.get('scanned_count', 0)} 次扫描</span></div>
-            </div>
-        </div>
-
-        <div class="panel">
-            <h3>🔍 深度侦察模式 (单点点杀)</h3>
-            <div class="search-box">
-                <input type="text" id="gameInput" placeholder="输入游戏关键词，母舰将实时同步调取 SteamPy 前五名报价并运行 AI 审计...">
-                <button onclick="checkProfit()">开始侦察</button>
-            </div>
-            <pre id="resultArea"></pre>
-        </div>
-
-        <div class="panel" style="border-color: #58a6ff;">
-            <h3 style="color: #58a6ff;">🛠️ 快速挂载中心 (Manual Post)</h3>
-            <div style="display: grid; grid-template-columns: 1fr 1.5fr 0.8fr auto; gap: 10px;">
-                <input type="text" id="postGame" placeholder="游戏全称">
-                <input type="text" id="postKey" placeholder="粘贴 CDKEY">
-                <input type="text" id="postPrice" placeholder="价格(元)">
-                <button onclick="submitPost()" style="background: #58a6ff; color: white;">立即上架</button>
-            </div>
-            <div id="postStatus" style="margin-top: 10px; font-size: 13px; font-family: monospace;"></div>
-        </div>
-
-        <script>
-        async function triggerSync() {{
-            console.log("📡 [SENTINEL] 同步指令发射...");
-            const btn = document.getElementById('syncBtn');
-            
-            if (!confirm("⚠️ 同步将接管浏览器执行审计，预计耗时1-3分钟。是否继续？")) return;
-
-            btn.disabled = true;
-            btn.style.opacity = '0.5';
-            btn.innerText = '⏳ 任务排队中...';
-            
-            try {{
-                // 💡 重点：这里的四重括号确保 Python 解析后，JS 看到的是正常的 {{{{ method: 'POST' }}}}
-                const res = await fetch('/api/sync_all', {{ method: 'POST' }});
-                const data = await res.json();
-                
-                if (data.status === 'success') {{
-                    alert("🛰️ 指令已下达！\\n母舰正在后台同步，完成后将发送飞书回执。");
-                }} else {{
-                    alert("❌ 失败: " + data.msg);
-                }}
-            }} catch(e) {{
-                console.error(e);
-                alert("🚨 信号中断：无法连接至主服务器。");
-            }} finally {{
-                setTimeout(() => {{
-                    btn.disabled = false;
-                    btn.style.opacity = '1';
-                    btn.innerText = '🔄 一键全平台资产同步';
-                }}, 5000);
-            }}
-        }}
-        </script>
-
-        <script>
-        async function submitPost() {{
-            const status = document.getElementById('postStatus');
-            const payload = {{
-                game: document.getElementById('postGame').value,
-                key: document.getElementById('postKey').value,
-                price: document.getElementById('postPrice').value
-            }};
-
-            status.innerText = '📡 正在发送指令...';
-            try {{
-                const res = await fetch('/web_post', {{
-                    method: 'POST',
-                    headers: {{'Content-Type': 'application/json'}},
-                    body: JSON.stringify(payload)
-                }});
-                const data = await res.json();
-                status.innerHTML = `<span style="color:${{data.status === 'success' ? '#3fb950' : '#f85149'}}">${{data.msg}}</span>`;
-            }} catch(e) {{
-                status.innerText = '🚨 无法连接至指挥部服务器';
-            }}
-        }}
-        </script>
-        
-        <div class="panel" style="padding:0; overflow:hidden;">
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width:80px;">时间</th>
-                        <th>游戏实体</th>
-                        <th style="width:90px;">成本</th>
-                        <th>SteamPy (Top5)</th>
-                        <th style="width:140px;">预期利润</th>
-                        <th>AI 审计结论</th>
-                        <th style="width:70px;">操作</th>
-                    </tr>
-                </thead>
-                <tbody>{rows}</tbody>
-            </table>
-        </div>
-
-        <script>
-        async function checkProfit() {{
-            const btn = document.querySelector('button');
-            const resArea = document.getElementById('resultArea');
-            const name = document.getElementById('gameInput').value;
-            if(!name) return;
-            
-            btn.innerText = '🛰️ 正在调动卫星...';
-            btn.disabled = true;
-            resArea.style.display = 'block';
-            resArea.innerText = '正在调取多平台接口并启动 AI 版本匹配算法，请稍候...';
-            
-            try {{
-                const res = await fetch(`/check?name=${{encodeURIComponent(name)}}`);
-                const data = await res.json();
-                resArea.innerText = data.report;
-            }} catch(e) {{
-                resArea.innerText = '🚨 信号中断：无法连接至主服务器。';
-            }} finally {{
-                btn.innerText = '开始侦察';
-                btn.disabled = false;
-            }}
-        }}
-        </script>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html)
+    # --- 2. 核心变化：调用模板文件 ---
+    # 这里的 "base_dashboard.html" 对应你在 web/templates 下创建的文件
+    return templates.TemplateResponse("base_dashboard.html", {
+        "request": request,
+        "rows": rows,
+        "dot_color": dot_color,
+        "current_mission": AGENT_STATE.get('current_mission', '待命'),
+        "scanned_count": AGENT_STATE.get('scanned_count', 0)
+    })
 
 @app.on_event("startup")
 async def startup():
@@ -782,95 +595,10 @@ async def get_audit_stats():
 
 # --- 2. 财务全息看板（直接用 HTML 字符串返回，不建文件） ---
 @app.get("/audit", response_class=HTMLResponse)
-async def get_audit_page():
-    # 这里直接把之前我给你的 HTML 代码存成一个大变量
-    # 这样你就不用去创建 templates 文件夹了
-    audit_html = """
-    <!DOCTYPE html>
-    <html lang="zh">
-    <head>
-        <meta charset="UTF-8">
-        <title>SENTINEL | 财务资产审计看板</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-            body { background-color: #0d1117; color: #c9d1d9; }
-            .glass-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; }
-            .stat-value { font-family: 'Segoe UI', monospace; }
-        </style>
-    </head>
-    <body class="p-8">
-        <div class="max-w-6xl mx-auto">
-            <div class="flex justify-between items-end mb-8 border-b border-gray-700 pb-4">
-                <div>
-                    <h1 class="text-3xl font-bold text-blue-400">📊 母舰资产全息审计</h1>
-                    <p class="text-gray-500 mt-1" id="update_time">正在连接母舰数据库...</p>
-                </div>
-                <button onclick="location.reload()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded text-sm transition">🔄 刷新数据</button>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <div class="glass-card p-6 border-l-4 border-l-red-500">
-                    <div class="text-gray-500 text-xs uppercase mb-1">采购总成本</div>
-                    <div id="total_investment" class="text-3xl font-bold stat-value">¥ 0.00</div>
-                </div>
-                <div class="glass-card p-6 border-l-4 border-l-green-500">
-                    <div class="text-gray-500 text-xs uppercase mb-1">已回收现金 (到手)</div>
-                    <div id="realized_cash" class="text-3xl font-bold text-green-400 stat-value">¥ 0.00</div>
-                </div>
-                <div class="glass-card p-6 border-l-4 border-l-blue-500">
-                    <div class="text-gray-500 text-xs uppercase mb-1">回本进度</div>
-                    <div id="recovery_rate" class="text-3xl font-bold text-blue-400 stat-value">0%</div>
-                </div>
-                <div class="glass-card p-6 border-l-4 border-l-yellow-500">
-                    <div class="text-gray-500 text-xs uppercase mb-1">货架总净值</div>
-                    <div id="floating_asset" class="text-3xl font-bold text-yellow-500 stat-value">¥ 0.00</div>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div class="lg:col-span-2 glass-card p-6">
-                    <h3 class="text-lg font-bold mb-4 text-gray-300">🕒 货架账龄分析</h3>
-                    <table class="w-full text-left text-sm">
-                        <thead class="text-gray-500 border-b border-gray-800">
-                            <tr><th class="pb-3">游戏名称</th><th class="pb-3">挂单价</th><th class="pb-3 text-right">已挂天数</th></tr>
-                        </thead>
-                        <tbody id="aging_body"></tbody>
-                    </table>
-                </div>
-                <div class="glass-card p-6">
-                    <h3 class="text-lg font-bold mb-4 text-red-400">⚠️ 仓库遗珠 (未上架)</h3>
-                    <div id="missing_body" class="space-y-3"></div>
-                </div>
-            </div>
-        </div>
-        <script>
-            async function loadAudit() {
-                try {
-                    const res = await fetch('/api/audit_stats');
-                    const d = await res.json();
-                    document.getElementById('update_time').innerText = "最后清算: " + d.update_at;
-                    document.getElementById('total_investment').innerText = "¥ " + d.summary.total_investment;
-                    document.getElementById('realized_cash').innerText = "¥ " + d.summary.realized_cash;
-                    document.getElementById('recovery_rate').innerText = d.summary.recovery_rate + "%";
-                    document.getElementById('floating_asset').innerText = "¥ " + d.summary.floating_asset;
-                    document.getElementById('aging_body').innerHTML = d.details.on_shelf_aging.map(item => `
-                        <tr class="border-b border-gray-800">
-                            <td class="py-4 text-gray-300">${item.name}</td>
-                            <td class="py-4 text-blue-400">¥${item.price}</td>
-                            <td class="py-4 text-right font-bold ${item.days > 7 ? 'text-red-500' : 'text-green-500'}">${item.days} 天</td>
-                        </tr>`).join('');
-                    document.getElementById('missing_body').innerHTML = d.details.missing_from_steampy.map(name => `
-                        <div class="p-3 bg-red-900/10 border border-red-900/20 rounded text-sm text-red-200">❓ ${name}</div>
-                    `).join('') || '<div class="text-green-500 text-sm">✨ 全部上架</div>';
-                } catch (e) { console.error(e); }
-            }
-            window.onload = loadAudit;
-        </script>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=audit_html)
-
+async def get_audit_page(request: Request):
+    # 现在这里只需要这一句话，优雅且专业
+    return templates.TemplateResponse("audit_dashboard.html", {"request": request})
+    
 # --- 在文件顶部导入区添加 ---
 from Finance_Center.sync_manager import SyncManager  # 确保路径正确
 

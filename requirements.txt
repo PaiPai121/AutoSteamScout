@@ -11,3 +11,4 @@ asyncio-mqtt>=0.12.1
 aiofiles>=23.0.0
 
 aiohttp
+jinja2

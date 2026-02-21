@@ -1,0 +1,19 @@
+:root { --main-gold: #ffcc00; --bg-dark: #0d1117; --border: #30363d; }
+body { background: var(--bg-dark); color: #c9d1d9; font-family: 'Segoe UI', system-ui, sans-serif; padding:20px; line-height:1.5; }
+.panel { background: #161b22; border: 1px solid var(--border); padding:20px; border-radius:8px; margin-bottom:20px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.status-bar { display:flex; align-items:center; gap:15px; margin-bottom:10px; }
+.dot { height:12px; width:12px; border-radius:50%; box-shadow: 0 0 8px currentColor; }
+
+table { width:100%; border-collapse:separate; border-spacing:0; margin-top:10px; table-layout: auto; }
+th { background: #21262d; padding:12px; text-align:left; border-bottom: 2px solid var(--main-gold); color: var(--main-gold); white-space: nowrap; }
+td { padding:12px; border-bottom:1px solid var(--border); white-space: normal !important; word-break: break-all; vertical-align: top; }
+tr:hover { background: #21262d; }
+
+.search-box { display:flex; gap:10px; margin-top:15px; }
+input { background:#0d1117; color:#fff; border:1px solid var(--border); padding:10px; border-radius:4px; flex-grow:1; outline:none; }
+input:focus { border-color: var(--main-gold); }
+button { background:var(--main-gold); color:#000; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold; transition: 0.2s; }
+button:hover { opacity: 0.8; }
+button:disabled { background: #444; color: #888; cursor: not-allowed; }
+
+#resultArea { background:#000; color:#0ff; padding:15px; border-radius:4px; margin-top:15px; border-left:4px solid var(--main-gold); display:none; white-space: pre-wrap; font-family: monospace; font-size: 13px; }

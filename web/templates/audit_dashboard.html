@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>SENTINEL | 财务资产审计看板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; }
+        .glass-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; }
+        .stat-value { font-family: 'Segoe UI', monospace; }
+    </style>
+</head>
+<body class="p-8">
+    <div class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-end mb-8 border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-blue-400">📊 母舰资产全息审计</h1>
+                <p class="text-gray-500 mt-1" id="update_time">正在连接母舰数据库...</p>
+            </div>
+            <button onclick="location.reload()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded text-sm transition">🔄 刷新数据</button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="glass-card p-6 border-l-4 border-l-red-500">
+                <div class="text-gray-500 text-xs uppercase mb-1">采购总成本</div>
+                <div id="total_investment" class="text-3xl font-bold stat-value">¥ 0.00</div>
+            </div>
+            <div class="glass-card p-6 border-l-4 border-l-green-500">
+                <div class="text-gray-500 text-xs uppercase mb-1">已回收现金 (到手)</div>
+                <div id="realized_cash" class="text-3xl font-bold text-green-400 stat-value">¥ 0.00</div>
+            </div>
+            <div class="glass-card p-6 border-l-4 border-l-blue-500">
+                <div class="text-gray-500 text-xs uppercase mb-1">回本进度</div>
+                <div id="recovery_rate" class="text-3xl font-bold text-blue-400 stat-value">0%</div>
+            </div>
+            <div class="glass-card p-6 border-l-4 border-l-yellow-500">
+                <div class="text-gray-500 text-xs uppercase mb-1">货架总净值</div>
+                <div id="floating_asset" class="text-3xl font-bold text-yellow-500 stat-value">¥ 0.00</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 glass-card p-6">
+                <h3 class="text-lg font-bold mb-4 text-gray-300">🕒 货架账龄分析</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="text-gray-500 border-b border-gray-800">
+                            <tr>
+                                <th class="pb-3">游戏实体</th>
+                                <th class="pb-3">挂单价</th>
+                                <th class="pb-3 text-right">已挂时长</th>
+                            </tr>
+                        </thead>
+                        <tbody id="aging_body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="glass-card p-6">
+                <h3 class="text-lg font-bold mb-4 text-red-400">⚠️ 仓库遗珠 (未上架)</h3>
+                <div id="missing_body" class="space-y-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadAudit() {
+            try {
+                const res = await fetch('/api/audit_stats');
+                const d = await res.json();
+                
+                document.getElementById('update_time').innerText = "最后清算: " + d.update_at;
+                document.getElementById('total_investment').innerText = "¥ " + d.summary.total_investment;
+                document.getElementById('realized_cash').innerText = "¥ " + d.summary.realized_cash;
+                document.getElementById('recovery_rate').innerText = d.summary.recovery_rate + "%";
+                document.getElementById('floating_asset').innerText = "¥ " + d.summary.floating_asset;
+
+                const agingBody = document.getElementById('aging_body');
+                agingBody.innerHTML = d.details.on_shelf_aging.map(item => `
+                    <tr class="border-b border-gray-800 hover:bg-gray-800/50">
+                        <td class="py-4 font-medium text-gray-300">${item.name}</td>
+                        <td class="py-4 text-blue-400 font-mono">¥${item.price}</td>
+                        <td class="py-4 text-right font-bold ${item.days > 7 ? 'text-red-500' : (item.days > 3 ? 'text-yellow-500' : 'text-green-500')}">${item.days} 天</td>
+                    </tr>`).join('');
+
+                const missingBody = document.getElementById('missing_body');
+                missingBody.innerHTML = d.details.missing_from_steampy.map(name => `
+                    <div class="p-3 bg-red-900/10 border border-red-900/20 rounded text-sm text-red-200">❓ ${name}</div>
+                `).join('') || '<div class="text-green-500 text-sm">✨ 全部上架</div>';
+            } catch (e) { console.error(e); }
+        }
+        window.onload = loadAudit;
+    </script>
+</body>
+</html>
