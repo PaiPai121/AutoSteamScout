@@ -34,3 +34,12 @@ NOTIFIER_CONFIG = {
 PATH_CONFIG = {
     "DB_NAME": "steamspy_all.json",
 }
+
+# --- Web 界面控制 ---
+WEB_CONFIG = {
+    "HOST": "0.0.0.0",
+    "PORT": 8000,
+    "REFRESH_INTERVAL": 5,        # 前端雷达刷新频率 (秒)
+    "STATIC_DIR": "web/static",   # 静态资源目录
+    "TEMPLATE_DIR": "web/templates", # 模板目录
+}

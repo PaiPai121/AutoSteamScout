@@ -1,3 +1,5 @@
+// --- 🛰️ SENTINEL 前端作战指令集 ---
+
 async function triggerSync() {
     console.log("📡 [SENTINEL] 同步指令发射...");
     const btn = document.getElementById('syncBtn');
@@ -54,3 +56,63 @@ async function checkProfit() {
     } catch(e) { resArea.innerText = '🚨 信号中断：无法连接至主服务器。'; }
     finally { btn.innerText = '开始侦察'; btn.disabled = false; }
 }
+
+// --- 🔄 核心：全息静默刷新逻辑 ---
+async function refreshDashboardData() {
+    try {
+        const res = await fetch('/api/history');
+        const data = await res.json();
+
+        // 1. 更新顶部文字 (根据刚才加的 ID)
+        const missionSpan = document.getElementById('current-mission-text');
+        const countSpan = document.getElementById('scanned-count-text');
+        if (missionSpan) missionSpan.innerText = data.current_mission;
+        if (countSpan) countSpan.innerText = `第 ${data.scanned_count} 次扫描`;
+
+        // 2. 更新表格
+        const tbody = document.querySelector('table tbody');
+        if (!tbody) return;
+
+        let newRows = "";
+        if (!data.history || data.history.length === 0) {
+            newRows = "<tr><td colspan='7' style='text-align:center; padding:50px; color:#8b949e;'>🛰️ 侦察机巡航中...</td></tr>";
+        } else {
+            data.history.forEach(h => {
+                const isProfitable = h.status.includes("✅");
+                const color = isProfitable ? "#3fb950" : "#f85149";
+                let starColor = "#8b949e";
+                let rVal = parseFloat(h.rating?.replace('%', '') || 0);
+                if (rVal >= 90) starColor = "#ffcc00";
+                else if (rVal >= 80) starColor = "#3fb950";
+
+                // 💡 这里的 HTML 结构必须和你 Python 里的字符串拼写完全一致
+                newRows += `
+                <tr>
+                    <td>${h.time || '--:--:--'}</td>
+                    <td>
+                        <div style="font-weight:bold; color:#f0f6fc;">${h.name}</div>
+                        <div style="font-size:12px; color:${starColor}; margin-top:4px;">
+                            <span>⭐ Steam 好评: ${h.rating}</span>
+                        </div>
+                    </td>
+                    <td>${h.sk_price}</td>
+                    <td style="color:#58a6ff; font-family:monospace; font-size:12px;">${h.py_price}</td>
+                    <td style='color:${color}; font-weight:bold;'>${h.profit} <small>(${h.roi})</small></td>
+                    <td><span style="font-size:12px; opacity:0.8;">${h.status}</span><br><small style="color:#8b949e;">原因: ${h.reason || '无'}</small></td>
+                    <td><a href="${h.url}" target="_blank" style="color:#ffcc00; text-decoration:none;">🛒 进货</a></td>
+                </tr>`;
+            });
+        }
+        
+        // 只有内容变了才刷，防止闪烁
+        if (tbody.innerHTML !== newRows) {
+            tbody.innerHTML = newRows;
+        }
+
+    } catch (e) {
+        console.log("📡 [同步等待] 可能正在重启或信号干扰...");
+    }
+}
+
+// 启动循环：每 5 秒自动同步一次后端数据
+setInterval(refreshDashboardData, 5000);

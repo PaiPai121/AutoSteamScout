@@ -3,25 +3,25 @@
 <head>
     <title>SENTINEL V2 | 战略指挥中心</title>
     <meta charset="utf-8">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}?v={{ css_version }}">
 </head>
 <body>
     <div class="panel">
         <div class="status-bar">
             <div class="dot"></div>
-            <h2 style="margin:0; color:var(--main-gold); display:flex; align-items:center; gap:20px;">
+            <h2 class="main-title">
                 🛰️ SENTINEL V2.5 战略指挥中心
-                <button onclick="window.open('/audit', '_blank')" style="background:#58a6ff; color:white; padding: 5px 15px; border-radius: 4px; border:none; cursor:pointer; font-size:14px; font-family:sans-serif;">
+                <button class="btn-audit" onclick="window.open('/audit', '_blank')">
                     📊 财务全息审计报告
                 </button>
             </h2>
         </div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-            <button id="syncBtn" onclick="triggerSync()" style="background:#3fb950; color:white; padding: 8px 20px; border-radius: 4px; font-weight:bold; cursor:pointer; border:none;">
+        <div class="mission-grid">
+            <button id="syncBtn" class="btn-sync" onclick="triggerSync()">
                 🔄 一键全平台资产同步
             </button>
-            <div>📍 当前任务: <span style="color:#fff;">{{ current_mission }}</span></div>
-            <div>📊 巡航统计: <span style="color:#fff;">第 {{ scanned_count }} 次扫描</span></div>
+            <div class="mission-item">📍 当前任务: <span id="current-mission-text" class="text-white">{{ current_mission }}</span></div>
+            <div class="mission-item">📊 巡航统计: <span id="scanned-count-text" class="text-white">第 {{ scanned_count }} 次扫描</span></div>
         </div>
     </div>
 
@@ -29,33 +29,33 @@
         <h3>🔍 深度侦察模式 (单点点杀)</h3>
         <div class="search-box">
             <input type="text" id="gameInput" placeholder="输入游戏关键词，母舰将实时同步调取 SteamPy 前五名报价并运行 AI 审计...">
-            <button onclick="checkProfit()">开始侦察</button>
+            <button class="btn-gold" onclick="checkProfit()">开始侦察</button>
         </div>
         <pre id="resultArea"></pre>
     </div>
 
-    <div class="panel" style="border-color: #58a6ff;">
-        <h3 style="color: #58a6ff;">🛠️ 快速挂载中心 (Manual Post)</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1.5fr 0.8fr auto; gap: 10px;">
+    <div class="panel panel-blue">
+        <h3 class="text-blue">🛠️ 快速挂载中心 (Manual Post)</h3>
+        <div class="post-grid">
             <input type="text" id="postGame" placeholder="游戏全称">
             <input type="text" id="postKey" placeholder="粘贴 CDKEY">
             <input type="text" id="postPrice" placeholder="价格(元)">
-            <button onclick="submitPost()" style="background: #58a6ff; color: white;">立即上架</button>
+            <button class="btn-blue" onclick="submitPost()">立即上架</button>
         </div>
-        <div id="postStatus" style="margin-top: 10px; font-size: 13px; font-family: monospace;"></div>
+        <div id="postStatus" class="status-console"></div>
     </div>
 
-    <div class="panel" style="padding:0; overflow:hidden;">
+    <div class="panel no-padding">
         <table>
             <thead>
                 <tr>
-                    <th style="width:80px;">时间</th>
+                    <th class="w-80">时间</th>
                     <th>游戏实体</th>
-                    <th style="width:90px;">成本</th>
+                    <th class="w-90">成本</th>
                     <th>SteamPy (Top5)</th>
-                    <th style="width:140px;">预期利润</th>
+                    <th class="w-140">预期利润</th>
                     <th>AI 审计结论</th>
-                    <th style="width:70px;">操作</th>
+                    <th class="w-70">操作</th>
                 </tr>
             </thead>
             <tbody>{{ rows|safe }}</tbody>

@@ -11,6 +11,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import random
 import re  # 记得在文件顶部导入 re 模块
+import config
 
 # --- 1. 路径挂载 ---
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -534,11 +535,24 @@ async def get_dashboard(request: Request):
     # 这里的 "base_dashboard.html" 对应你在 web/templates 下创建的文件
     return templates.TemplateResponse("base_dashboard.html", {
         "request": request,
+        "css_version": "1.0.1", # 随便写个版本号
         "rows": rows,
         "dot_color": dot_color,
         "current_mission": AGENT_STATE.get('current_mission', '待命'),
         "scanned_count": AGENT_STATE.get('scanned_count', 0)
     })
+
+
+@app.get("/api/history")
+async def get_history_api():
+    """专门为前端提供最新的 50 条比价历史记录 (JSON 格式)"""
+    return {
+        "scanned_count": AGENT_STATE.get("scanned_count", 0),
+        "current_mission": AGENT_STATE.get("current_mission", "待命"),
+        "is_running": AGENT_STATE.get("is_running", False),
+        "history": AGENT_STATE.get("history", [])[:50]
+    }
+
 
 @app.on_event("startup")
 async def startup():
