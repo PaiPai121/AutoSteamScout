@@ -94,3 +94,7 @@ game_rating/steamspy_all.json
 blackbox
 steam_app_list.json
 data
+Sonkwo_Scout/sonkwo_data_bak/
+**/Cache/
+**/Code Cache/
+*.bak
