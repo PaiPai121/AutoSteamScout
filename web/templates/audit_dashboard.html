@@ -191,45 +191,42 @@
             const missingBody = document.getElementById('missing_body');
             const missingList = d.details.missing_from_steampy || [];
 
-            // 从 trace_details 中提取待售商品的完整信息（排除损毁的）
-            const missingItems = (d.details.trace_details || [])
-                .filter(item => (item.tag === '待售' || item.tag === '遗珠') && !item.damaged)
-                .map(item => ({
-                    uid: item.uid || '',  // 🆕 唯一 ID，用于精确查找
-                    name: item.source_name,
-                    cost: item.cost,
-                    // 🚨 CDKey 不返回给前端，保护敏感信息
-                    // cd_key: item.cd_key || '',
-                    damaged: item.damaged || false
-                }));
-
             // 更新待售商品计数
-            document.getElementById('missing_count').innerText = `${missingItems.length} 个`;
+            document.getElementById('missing_count').innerText = `${missingList.length} 个`;
 
-            if (missingItems.length === 0) {
+            if (missingList.length === 0) {
                 missingBody.innerHTML = '<div class="text-green-500 text-sm italic">✨ 仓库已清空，全部商品已在售</div>';
             } else {
-                missingBody.innerHTML = missingItems.map((item, index) => `
+                // 从 trace_details 中找到对应的完整信息
+                const traceDetails = d.details.trace_details || [];
+                missingBody.innerHTML = missingList.map(name => {
+                    // 在 trace_details 中查找对应的商品
+                    const item = traceDetails.find(t => t.source_name === name && t.tag === '遗珠');
+                    const uid = item ? item.uid : '';
+                    const cost = item ? item.cost : 0;
+
+                    return `
                     <div class="p-3 bg-yellow-900/10 border border-yellow-900/20 rounded text-sm text-yellow-200 flex items-center justify-between gap-3">
                         <div class="flex-1 min-w-0">
-                            <div class="font-medium truncate" title="${item.name}">🟡 ${item.name}</div>
-                            <div class="text-xs text-gray-500 mt-1">💰 成本：¥${item.cost?.toFixed(2) || '0.00'}</div>
-                            <div class="text-xs text-gray-600 mt-0.5 font-mono">ID: ${item.uid}</div>
+                            <div class="font-medium truncate" title="${name}">🟡 ${name}</div>
+                            <div class="text-xs text-gray-500 mt-1">💰 成本：¥${cost?.toFixed(2) || '0.00'}</div>
+                            <div class="text-xs text-gray-600 mt-0.5 font-mono">ID: ${uid}</div>
                         </div>
                         <div class="flex items-center gap-2 flex-shrink-0">
-                            <button onclick="listSingleItem('${encodeURIComponent(item.uid)}', '${encodeURIComponent(item.name)}', ${item.cost || 0})"
+                            <button onclick="listSingleItem('${encodeURIComponent(uid)}', '${encodeURIComponent(name)}', ${cost || 0})"
                                     class="px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-xs transition flex items-center gap-1"
                                     title="查询 SteamPy 价格并上架此商品">
                                 🚀 上架此项
                             </button>
-                            <button onclick="markAsDamaged('${encodeURIComponent(item.uid)}', '${encodeURIComponent(item.name)}')"
+                            <button onclick="markAsDamaged('${encodeURIComponent(uid)}', '${encodeURIComponent(name)}')"
                                     class="px-3 py-1.5 bg-red-900/50 hover:bg-red-800 rounded text-xs transition"
                                     title="标记为损毁，只记成本">
                                 🚫 标记损毁
                             </button>
                         </div>
                     </div>
-                `).join('');
+                    `;
+                }).join('');
             }
 
             // 🚀 渲染全息资产溯源清单（交易明细）

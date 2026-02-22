@@ -187,14 +187,13 @@ class FinanceAuditor:
             except:
                 pass
 
-        # 采购端：排除退款单 + 黑名单 Key + 损毁商品
+        # 采购端：排除退款单 + 黑名单 Key
         sonkwo_valid = [
             p for p in sonkwo_data
             if "退款" not in p.get("status", "")
             and "REFUN" not in p.get("cd_key", "").upper()  # 排除退款占位符
             and p.get("cd_key")  # 确保有 Key
-            and p.get("cd_key", "").strip().upper() not in damaged_keys  # 排除损毁的
-            and p.get("cd_key", "").strip().upper() not in self.blacklist_purchase_keys  # 排除采购端黑名单 Key
+            and p.get("cd_key") not in self.blacklist_purchase_keys  # 排除采购端黑名单 Key
         ]
 
         # 销售端：排除黑名单 Key
