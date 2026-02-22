@@ -93,109 +93,106 @@ class FinanceAuditor:
         except:
             return 0.0
 
-    def _calculate_profit_shadow(self, sonkwo_valid, missing_inventory, realized_cash, floating_asset, total_investment, active_items=None, name_mapping=None):
+    def _calculate_profit_shadow(self, sonkwo_valid, realized_cash, floating_asset, total_investment, active_items=None, sold_items=None, name_mapping=None, ghost_names=None):
         """
-        🎯 穿透式成本溯源引擎
-        逻辑原则：采购总额 = 已售成本 + 在售成本 + 遗珠成本
-
-        💡 关键修复：使用名称映射表解决中英文命名差异
+        🎯 终极全息穿透审计引擎
         
-        🚀 价格池机制：为每个游戏建立 FIFO 价格队列，确保多价格场景下盈亏精确对应
-
-        🚀 返回：{current_profit, expected_profit, trace_details: [每笔交易明细]}
+        逻辑原则：实物 > 映射 > 遗珠
+        盈亏核算：双 FIFO 价格池（在售/已售）
+        
+        🚀 返回：{current_profit, expected_profit, trace_details: [含采购 + 幽灵]}
         """
         try:
             active_items = active_items or []
-            missing_inventory = missing_inventory or []
+            sold_items = sold_items or []
             name_mapping = name_mapping or {}
-
-            # 清洗遗珠名称（移除 UID 后缀）
-            missing_raw_names = [re.sub(r'\s\(.*\)', '', m).strip() for m in missing_inventory]
-            missing_counter = Counter(missing_raw_names)
-
-            # 💡 使用映射后的销售名构建在售计数器
-            active_counter = Counter()
+            ghost_names = ghost_names or []
+            
+            # 1. 预建索引：销售全量价格表（用于幽灵资产）
+            all_sales_items = active_items + sold_items
+            price_map = {i['name']: self._clean_price(i.get('price', 0)) for i in all_sales_items}
+            
+            # 2. 建立双重 FIFO 价格池：分别对应"在售"和"已售"
+            active_price_pools = {}
             for item in active_items:
-                sale_name = item.get('name', '').strip()
-                active_counter[sale_name] += 1
-
-            # 🚀 新增：建立价格池 { "游戏名": [价格 1, 价格 2, ...] }
-            # 目的：解决同名商品挂多个不同价格时，next() 盲抓导致的统计偏移
-            price_pools = {}
-            for item in active_items:
-                name = item.get('name', '').strip()
+                name = item['name']
                 price = self._clean_price(item.get('price', 0))
-                if name not in price_pools:
-                    price_pools[name] = []
-                price_pools[name].append(price)
+                active_price_pools.setdefault(name, []).append(price)
+
+            sold_price_pools = {}
+            for item in sold_items:
+                name = item['name']
+                price = self._clean_price(item.get('price', 0))
+                sold_price_pools.setdefault(name, []).append(price)
+
+            # 3. 建立状态计数器
+            active_counter = Counter([i['name'] for i in active_items])
+            sold_counter = Counter([i['name'] for i in sold_items])
 
             sold_cost = 0.0
             on_shelf_cost = 0.0
             missing_cost = 0.0
-
-            # 诊断计数器
-            unassigned_count = 0
-
-            # 🚀 新增：交易溯源流水（每笔采购的状态 + 盈亏）
             trace_details = []
 
+            # 4. 判定采购流 (判决每一笔钱的归宿)
             for p in sonkwo_valid:
                 p_cost = self._clean_price(p.get("cost", 0))
                 p_name = p.get("name", "").strip()
                 p_uid = p.get("uid", "Unknown")
+                
+                target_name = name_mapping.get(p_name)
 
-                # 💡 使用映射后的销售名进行匹配
-                mapped_name = name_mapping.get(p_name, p_name)
-
-                # 判定优先级 A：是否在"遗珠清单"中？（使用映射名）
-                if missing_counter[mapped_name] > 0:
-                    missing_cost += p_cost
-                    missing_counter[mapped_name] -= 1
-                    tag = "遗珠"
-                    # 遗珠：尚未产生任何收入
-                    est_revenue = 0.0
-
-                # 判定优先级 B：是否在"在售清单"中？（使用映射名）
-                elif active_counter[mapped_name] > 0:
-                    on_shelf_cost += p_cost
-                    active_counter[mapped_name] -= 1
+                if target_name and active_counter[target_name] > 0:
+                    # ✅ [在售]：匹配到货架实物
                     tag = "在售"
-                    # 🚀 从价格池中按顺序"消费"一个价格 (FIFO 先进先出)
-                    # 确保第一笔采购对应第一个挂单价格，物理同步
-                    if mapped_name in price_pools and price_pools[mapped_name]:
-                        price_val = price_pools[mapped_name].pop(0)
-                        est_revenue = price_val * self.PAYOUT_RATE
-                    else:
-                        est_revenue = 0.0
-
-                # 判定优先级 C：若既不在仓库也不在货架，必然已售
-                else:
-                    sold_cost += p_cost
-                    unassigned_count += 1
+                    on_shelf_cost += p_cost
+                    active_counter[target_name] -= 1
+                    # 消费"在售价格池"
+                    price_val = active_price_pools[target_name].pop(0) if active_price_pools[target_name] else 0
+                    est_revenue = price_val * self.PAYOUT_RATE
+                    profit_val = round(est_revenue - p_cost, 2)
+                    
+                elif target_name and sold_counter[target_name] > 0:
+                    # ✅ [已售]：匹配到历史销售存根
                     tag = "已售"
-                    # 已售：收入已计入 realized_cash，这里标记为"已核销"
+                    sold_cost += p_cost
+                    sold_counter[target_name] -= 1
+                    # 🚀 消费"已售价格池"，找回历史成交价
+                    price_val = sold_price_pools[target_name].pop(0) if sold_price_pools[target_name] else 0
+                    est_revenue = price_val * self.PAYOUT_RATE
+                    profit_val = round(est_revenue - p_cost, 2)
+                    
+                else:
+                    # 🟡 [遗珠]：无映射或无坑位
+                    tag = "遗珠"
+                    missing_cost += p_cost
                     est_revenue = 0.0
+                    profit_val = round(est_revenue - p_cost, 2)
 
-                # 🚀 记录这笔交易的完整溯源信息
                 trace_details.append({
                     "source_name": p_name,
                     "uid": p_uid,
-                    "mapped_name": mapped_name,
+                    "mapped_name": target_name or "-",
                     "tag": tag,
                     "cost": p_cost,
                     "est_revenue": round(est_revenue, 2),
-                    "profit": round(est_revenue - p_cost, 2) if tag != "已售" else "已核销"
+                    "profit": profit_val
                 })
 
-            # 财务校验：各部分成本之和必须等于总投入
-            calculated_total = sold_cost + on_shelf_cost + missing_cost
-            if abs(calculated_total - total_investment) > 0.01:
-                print(f"⚠️ [审计预警] 成本分流不平衡！差额：{calculated_total - total_investment:.2f}")
+            # 5. 判定幽灵流 (合并入全息视图)
+            for g_name in ghost_names:
+                rev = price_map.get(g_name, 0) * self.PAYOUT_RATE
+                trace_details.append({
+                    "source_name": g_name,
+                    "uid": "GHOST",
+                    "mapped_name": g_name,
+                    "tag": "来源不明",
+                    "cost": 0.0,
+                    "est_revenue": round(rev, 2),
+                    "profit": round(rev, 2)
+                })
 
-            # 诊断日志：如果有未分配成本，打印详情
-            if unassigned_count > 0:
-                print(f"\n🔍 [成本溯源] {unassigned_count} 笔采购归为'已售成本' ¥{sold_cost:.2f}")
-
+            # 6. 财务汇总校验
             current_profit = round(realized_cash - sold_cost, 2)
             expected_profit = round((realized_cash + floating_asset) - total_investment, 2)
 
@@ -207,42 +204,40 @@ class FinanceAuditor:
 
         except Exception as e:
             import traceback
-            print(f"🚨 [财务溯源崩溃] 错误：{e}\n{traceback.format_exc()[-200:]}")
-            # 🚀 返回完整骨架结构，防止前端崩溃
-            return {
-                "current_profit": 0.0,
-                "expected_profit": 0.0,
-                "trace_details": []
-            }
+            print(f"🚨 [全息审计崩溃]: {e}\n{traceback.format_exc()[-200:]}")
+            return {"current_profit": 0.0, "expected_profit": 0.0, "trace_details": []}
 
-    async def run_detailed_audit(self):
+    async def run_detailed_audit(self, silent=True):
         """
         🚀 流程编排器：指挥官只需看这里的流程
+        
+        Args:
+            silent: 是否静默模式。False 时会在终端打印完整详细报告
         """
         # 1. 准备数据 (清洗与黑名单)
         sonkwo_valid, steampy_valid = self._prepare_data()
 
-        # 2. 核心对账 (双向穿透)
+        # 2. 核心对账 (双向穿透) - 只生成 name_mapping 和 active_items
         inventory_report = await self._reconcile_inventory(sonkwo_valid, steampy_valid)
-        
-        # 3. 财务分析 (收入、在售、利润溯源)
+
+        # 3. 财务分析 (收入、在售、利润溯源) - 单向流：财务层统一判定状态
         financial_summary = self._analyze_finances(
             sonkwo_valid,
-            inventory_report['missing_inventory'],
             inventory_report['active_items'],
             inventory_report['sold_items'],
             inventory_report['closed_count'],
-            inventory_report['name_mapping']
+            inventory_report['name_mapping'],
+            inventory_report['ghost_names']
         )
 
         # 4. 封装报告
         final_report = self._build_report(
-            inventory_report, 
+            inventory_report,
             financial_summary
         )
 
         # 5. 持久化与展示
-        self._save_and_display(final_report)
+        self._save_and_display(final_report, silent=silent)
         return final_report
 
     def _prepare_data(self):
@@ -270,108 +265,87 @@ class FinanceAuditor:
 
     async def _reconcile_inventory(self, sonkwo_valid, steampy_valid):
         """
-        🎯 核心对账层：双向穿透查漏 + 账龄分析
-        返回：{active_items, sold_items, closed_count, missing_inventory, ghost_inventory, name_mapping}
+        🎯 终极脱水版：只提供翻译字典和实物清单
+        
+        职责：
+        1. 盘点货架实物 (Active)
+        2. 整理历史存根 (Sold)
+        3. 建立语义映射 (Mapping)
+        4. 标记未知来源 (Ghost)
+        
+        🚀 原则：只搬运数据，不判定状态
         """
         now = datetime.datetime.now()
-
-        # 1. 建立销售池计数（使用 Counter 处理多份拷贝）
-        py_sales_pool = Counter([s.get("name", "") for s in steampy_valid])
-        # 使用 Counter 记录未匹配的销售名（避免重复）
-        unmatched_py_names = Counter([s.get("name", "") for s in steampy_valid])
-
-        # 2. 账龄分析：提取在售商品 + 已售商品 + 关闭数量
+        
+        # 1. 物理层：扫描销售端，划分"货架"与"历史"
         active_items = []
         sold_items = []
         closed_count = 0
-
+        
         for s in steampy_valid:
             name = s.get("name", "")
             status = s.get("status", "")
-            stock_str = s.get("stock", "1/1")
-
+            # 简单的库存判定
             try:
-                curr_stk = int(re.findall(r'(\d+)\s*/', stock_str)[0])
+                curr_stk = int(re.findall(r'(\d+)\s*/', s.get("stock", "1/1"))[0])
             except:
                 curr_stk = 1
 
-            if "出售" in status:
-                if curr_stk > 0:
-                    try:
-                        start_time = datetime.datetime.strptime(
-                            s.get("order_time"), "%Y-%m-%d %H:%M:%S"
-                        )
-                        days_on_shelf = (now - start_time).days
-                    except:
-                        days_on_shelf = 0
-
-                    active_items.append({
-                        "name": name,
-                        "price": s.get("my_price"),
-                        "days": days_on_shelf
-                    })
-                else:
-                    sold_items.append({
-                        "name": name,
-                        "price": s.get("my_price")
-                    })
-            # 💡 修复：关闭/下架状态且库存为 0，视为已售（非退款关闭）
-            elif ("关闭" in status or "下架" in status) and curr_stk == 0:
-                sold_items.append({
-                    "name": name,
-                    "price": s.get("my_price")
+            if "出售" in status and curr_stk > 0:
+                # 记录在售实物
+                try:
+                    start_time = datetime.datetime.strptime(s.get("order_time"), "%Y-%m-%d %H:%M:%S")
+                    days_on_shelf = (now - start_time).days
+                except:
+                    days_on_shelf = 0
+                    
+                active_items.append({
+                    "name": name, 
+                    "price": s.get("my_price"), 
+                    "days": days_on_shelf
                 })
-                closed_count += 1
-            elif "关闭" in status or "下架" in status:
+            elif (("出售" in status and curr_stk == 0) or 
+                  (("关闭" in status or "下架" in status) and curr_stk == 0)):
+                # 记录已售存根
+                sold_items.append({"name": name, "price": s.get("my_price")})
+            else:
                 closed_count += 1
 
-        # 3. 双向穿透对账 + 名称映射
-        # print(f"📡 [审计中] 正在执行双向穿透对账...")
-        missing_inventory = []
-        match_pool = Counter(py_sales_pool)
-
-        # 💡 名称映射表：采购名 -> 销售名 (用于财务分析时的成本溯源)
+        # 2. 语义层：建立采购名与销售名的映射（纯翻译，不带状态）
         name_mapping = {}
-
-        # 排序：长名优先，防止短名抢坑
+        all_sales_names = list(set([s.get("name", "") for s in steampy_valid]))
+        
+        # 建立临时计数器，仅用于分配映射关系（防止多笔同名采购抢占）
+        temp_pool = Counter([s.get("name", "") for s in steampy_valid])
+        
         for p in sorted(sonkwo_valid, key=lambda x: len(x.get("name", "")), reverse=True):
             p_name = p.get("name", "")
-            uid = p.get("uid", "Unknown")
-
-            matched_name = await self._is_same_game(p_name, list(match_pool.keys()))
-
-            if matched_name and match_pool[matched_name] > 0:
-                match_pool[matched_name] -= 1
-                # 从 Counter 中减掉 1，如果减到 0 则自动移除
-                unmatched_py_names[matched_name] -= 1
-                if unmatched_py_names[matched_name] <= 0:
-                    del unmatched_py_names[matched_name]
-
-                # 🎯 记录名称映射，用于财务分析
+            # 只管找不找得到翻译，不管它卖没卖掉
+            matched_name = await self._is_same_game(p_name, all_sales_names)
+            if matched_name and temp_pool[matched_name] > 0:
                 name_mapping[p_name] = matched_name
-            else:
-                missing_inventory.append(f"{p_name} ({uid})")
+                temp_pool[matched_name] -= 1
 
-        # 4. 生成幽灵资产列表（去重后的未匹配销售名）
-        ghost_inventory = list(unmatched_py_names.elements())
+        # 3. 补遗层：找出哪些销售项是"石头里蹦出来的" (Ghost)
+        matched_sales_set = set(name_mapping.values())
+        ghost_names = [name for name in all_sales_names if name not in matched_sales_set]
 
         return {
             "active_items": active_items,
             "sold_items": sold_items,
             "closed_count": closed_count,
-            "missing_inventory": missing_inventory,
-            "ghost_inventory": ghost_inventory,
-            "name_mapping": name_mapping
+            "name_mapping": name_mapping,
+            "ghost_names": ghost_names
         }
 
-    def _analyze_finances(self, sonkwo_valid, missing_inventory, active_items, sold_items, closed_count, name_mapping=None):
+    def _analyze_finances(self, sonkwo_valid, active_items, sold_items, closed_count, name_mapping=None, ghost_names=None):
         """
         🎯 财务分析层：资金总量统计 + 影子利润核算
-        复用 inventory_report 中的 active_items 和 sold_items，确保数据一致性
-
-        关键修复：使用名称映射表将采购名映射到销售名，解决中英文命名差异
+        
+        🚀 终极单向流：财务层基于实物证据独立判定（实物 > 映射 > 遗珠）
         """
         name_mapping = name_mapping or {}
+        ghost_names = ghost_names or []
 
         # 1. 投资总额
         total_investment = sum(
@@ -403,16 +377,16 @@ class FinanceAuditor:
             "blacklisted": len(self.blacklist_times)
         }
 
-        # 3. 穿透利润溯源 (传入名称映射表)
-        # 🚀 现在返回的是字典，包含 trace_details 交易明细
+        # 3. 穿透利润溯源 (终极单向流：财务层独立判定)
         profit_result = self._calculate_profit_shadow(
             sonkwo_valid,
-            missing_inventory,
             realized_cash,
             floating_asset,
             total_investment,
             active_items,
-            name_mapping
+            sold_items,
+            name_mapping,
+            ghost_names
         )
 
         return {
@@ -428,10 +402,22 @@ class FinanceAuditor:
     def _build_report(self, inventory_report, financial_summary):
         """
         🎯 报告封装层：组装最终审计报告结构
+
+        🚀 单一数据源原则：
+        - missing_from_steampy：从 trace_details 中提取"遗珠"状态
+        - trace_details：包含采购交易 + 幽灵资产的完整溯源
         """
         now = datetime.datetime.now()
         total_investment = financial_summary["total_investment"]
         realized_cash = financial_summary["realized_cash"]
+
+        # 🚀 从 trace_details 中提取真正的"遗珠"清单（单一事实源）
+        trace_details = financial_summary["trace_details"]
+        missing_from_trace = [
+            f"{t['source_name']} ({t['uid']})"
+            for t in trace_details
+            if t['tag'] == '遗珠'
+        ]
 
         return {
             "update_at": now.strftime("%Y-%m-%d %H:%M:%S"),
@@ -453,9 +439,9 @@ class FinanceAuditor:
                     key=lambda x: x['days'],
                     reverse=True
                 ),
-                "missing_from_steampy": inventory_report['missing_inventory'],
-                "ghost_inventory": inventory_report['ghost_inventory'],
-                "trace_details": financial_summary["trace_details"]  # 🚀 透传交易明细到 Web
+                "missing_from_steampy": missing_from_trace,
+                "ghost_inventory": inventory_report['ghost_names'],
+                "trace_details": trace_details  # 🚀 包含幽灵资产的完整交易明细
             }
         }
 
@@ -529,7 +515,35 @@ class FinanceAuditor:
 
         print("-" * 55)
 
+        # 5. 📋 全息资产溯源清单 (新增：逐笔交易盈亏 + 幽灵资产)
+        trace = r['details'].get('trace_details', [])
+        print(f" 📋【全息资产溯源清单】 (共 {len(trace)} 笔交易，含幽灵资产)")
+        if trace:
+            # 按状态分组统计
+            from collections import defaultdict
+            grouped = defaultdict(list)
+            for item in trace:
+                grouped[item['tag']].append(item)
+
+            # 打印每组详情
+            for tag in ["已售", "在售", "遗珠", "来源不明"]:
+                items = grouped.get(tag, [])
+                if items:
+                    tag_ico = {"已售": "✅", "在售": "🔵", "遗珠": "🟡", "来源不明": "👻"}.get(tag, "⚪")
+                    print(f"\n    {tag_ico} ── {tag} 商品 ({len(items)} 笔) ──")
+                    for it in items[:15]:  # 每组最多显示 15 笔
+                        # 🚀 profit 永远是数字
+                        profit_val = float(it['profit']) if isinstance(it['profit'], (int, float)) else 0
+                        profit_color = "🟢" if profit_val > 0 else ("🔴" if profit_val < 0 else "⚪")
+                        print(f"       {it['source_name']:<25} 成本¥{it['cost']:.2f} → 收入¥{it['est_revenue']:.2f} | 盈亏：{profit_color} ¥{profit_val:.2f}")
+                    if len(items) > 15:
+                        print(f"       ... 还有 {len(items) - 15} 笔，请在 Web 端查看完整清单")
+        else:
+            print("    📊 暂无交易记录")
+
+        print("=" * 55)
+
 if __name__ == "__main__":
     import asyncio
     auditor = FinanceAuditor()
-    asyncio.run(auditor.run_detailed_audit())
+    asyncio.run(auditor.run_detailed_audit(silent=False))
