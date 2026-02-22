@@ -85,7 +85,7 @@ class FinanceAuditor:
         trace_details = []
         total_realized_cost = 0.0
 
-        for p in sonkwo_valid:
+        for idx, p in enumerate(sonkwo_valid):
             p_key = p.get("cd_key", "").strip().upper()
             p_cost = self._clean_price(p.get("cost", 0))
             p_name = p.get("name")
@@ -113,7 +113,7 @@ class FinanceAuditor:
                 "est_revenue": round(revenue, 2),
                 "profit": round(revenue - p_cost, 2),  # 🚀 所有状态都计算真实盈亏
                 "mapped_name": active_map.get(p_key, {}).get('name') or sold_map.get(p_key, {}).get('name') or '-',  # 🆕 映射销售名
-                "uid": f"SK_{p.get('order_id', 'unknown')}_{idx}",  # 🆕 唯一 ID，用于前端查找
+                "uid": p.get("uid", f"{p_name}_{idx}"),  # 🆕 使用账本原有的 uid
                 # 🚨 CDKey 不返回给前端，保护敏感信息
                 # "cd_key": p.get("cd_key", ""),  ← 已移除
                 "damaged": p.get("damaged", False)  # 🚀 返回损毁标记
