@@ -74,7 +74,7 @@
             </div>
 
             <div class="glass-card p-6">
-                <h3 class="text-lg font-bold mb-4 text-red-400">⚠️ 仓库遗珠 (未上架)</h3>
+                <h3 class="text-lg font-bold mb-4 text-yellow-400">🟡 待售商品 (未上架)</h3>
                 <div id="missing_body" class="space-y-3"></div>
             </div>
         </div>
@@ -154,10 +154,10 @@
                     <td class="py-4 text-right font-bold ${item.days > 7 ? 'text-red-500' : (item.days > 3 ? 'text-yellow-500' : 'text-green-500')}">${item.days} 天</td>
                 </tr>`).join('');
 
-            // 渲染遗珠
+            // 渲染待售商品
             const missingBody = document.getElementById('missing_body');
             missingBody.innerHTML = d.details.missing_from_steampy.map(name => `
-                <div class="p-3 bg-red-900/10 border border-red-900/20 rounded text-sm text-red-200 animate-pulse">❓ ${name}</div>
+                <div class="p-3 bg-yellow-900/10 border border-yellow-900/20 rounded text-sm text-yellow-200">🟡 ${name}</div>
             `).join('') || '<div class="text-green-500 text-sm italic">✨ 仓库已清空，全部商品已在售</div>';
 
             // 🚀 渲染全息资产溯源清单（交易明细）
@@ -166,7 +166,7 @@
             
             // 🚀 稳定排序：主键为状态，次键为采购成本（降序），再次键为名称（字典序）
             const sortedDetails = [...traceDetails].sort((a, b) => {
-                const order = { "已售": 0, "在售": 1, "遗珠": 2, "来源不明": 3 };
+                const order = { "已售": 0, "在售": 1, "待售": 2, "来源不明": 3 };
                 const statusDiff = (order[a.tag] ?? 99) - (order[b.tag] ?? 99);
                 if (statusDiff !== 0) return statusDiff;
                 // 状态相同时，按成本降序排列
@@ -175,29 +175,32 @@
                 // 成本也相同时，按名称字典序排列（确保稳定性）
                 return a.source_name.localeCompare(b.source_name, 'zh-Hans-CN');
             });
-            
+
             traceBody.innerHTML = sortedDetails.map(item => {
                 // 状态标签样式
                 const tagStyles = {
                     "已售": "bg-green-900/30 text-green-400 border-green-800",
                     "在售": "bg-blue-900/30 text-blue-400 border-blue-800",
-                    "遗珠": "bg-yellow-900/30 text-yellow-400 border-yellow-800",
+                    "待售": "bg-yellow-900/30 text-yellow-400 border-yellow-800",
                     "来源不明": "bg-purple-900/30 text-purple-400 border-purple-800"
                 };
                 const tagStyle = tagStyles[item.tag] || "bg-gray-800 text-gray-400";
-                
+
                 // 🚀 盈亏样式：profit 永远是数字
                 const profitVal = parseFloat(item.profit);
                 let profitClass = "text-gray-400";
                 let profitDisplay = `¥${profitVal.toFixed(2)}`;
-                
+
                 if (profitVal > 0) profitClass = "text-green-400 font-bold";
                 else if (profitVal < 0) profitClass = "text-red-400 font-bold";
-                
+
+                // 🚀 状态显示：把"遗珠"改成"待售"
+                const displayTag = item.tag === '遗珠' ? '待售' : item.tag;
+
                 return `
                 <tr class="border-b border-gray-800 hover:bg-gray-800/50 transition-all duration-200">
                     <td class="py-3">
-                        <span class="px-2 py-1 rounded text-xs border ${tagStyle}">${item.tag}</span>
+                        <span class="px-2 py-1 rounded text-xs border ${tagStyle}">${displayTag}</span>
                     </td>
                     <td class="py-3 font-medium text-gray-300">${item.source_name}</td>
                     <td class="py-3 text-gray-500 text-sm">${item.mapped_name !== item.source_name ? item.mapped_name : '-'}</td>
