@@ -112,8 +112,11 @@ class FinanceAuditor:
                 "cost": p_cost,
                 "est_revenue": round(revenue, 2),
                 "profit": round(revenue - p_cost, 2),  # 🚀 所有状态都计算真实盈亏
-                "mapped_name": active_map.get(p_key, {}).get('name') or sold_map.get(p_key, {}).get('name') or '-'  # 🆕 映射销售名
-                # 🚨 不返回 uid/cd_key，防止前端泄露
+                "mapped_name": active_map.get(p_key, {}).get('name') or sold_map.get(p_key, {}).get('name') or '-',  # 🆕 映射销售名
+                "uid": f"SK_{p.get('order_id', 'unknown')}_{idx}",  # 🆕 唯一 ID，用于前端查找
+                # 🚨 CDKey 不返回给前端，保护敏感信息
+                # "cd_key": p.get("cd_key", ""),  ← 已移除
+                "damaged": p.get("damaged", False)  # 🚀 返回损毁标记
             })
 
         # 合并幽灵资产 (为了报表完整性)
@@ -173,13 +176,25 @@ class FinanceAuditor:
         sonkwo_data = self._load_json(self.sonkwo_file)
         steampy_data = self._load_json(self.steampy_file)
 
-        # 采购端：排除退款单 + 黑名单 Key
+        # 加载损毁列表
+        damaged_file = "data/damaged_items.json"
+        damaged_keys = set()
+        if os.path.exists(damaged_file):
+            try:
+                with open(damaged_file, "r", encoding="utf-8") as f:
+                    damaged_items = json.load(f)
+                damaged_keys = {item.get("cd_key", "").strip().upper() for item in damaged_items if item.get("cd_key")}
+            except:
+                pass
+
+        # 采购端：排除退款单 + 黑名单 Key + 损毁商品
         sonkwo_valid = [
-            p for p in sonkwo_data 
-            if "退款" not in p.get("status", "") 
+            p for p in sonkwo_data
+            if "退款" not in p.get("status", "")
             and "REFUN" not in p.get("cd_key", "").upper()  # 排除退款占位符
             and p.get("cd_key")  # 确保有 Key
-            and p.get("cd_key") not in self.blacklist_purchase_keys  # 排除采购端黑名单 Key
+            and p.get("cd_key", "").strip().upper() not in damaged_keys  # 排除损毁的
+            and p.get("cd_key", "").strip().upper() not in self.blacklist_purchase_keys  # 排除采购端黑名单 Key
         ]
 
         # 销售端：排除黑名单 Key
@@ -191,6 +206,7 @@ class FinanceAuditor:
         print(f"📦 [数据准备] 采购有效：{len(sonkwo_valid)} 笔 | 销售有效：{len(steampy_valid)} 笔")
         print(f"   - 采购端黑名单 Key: {len(self.blacklist_purchase_keys)} 笔")
         print(f"   - 销售端黑名单 Key: {len(self.blacklist_sales_keys)} 笔")
+        print(f"   - 损毁商品：{len(damaged_keys)} 笔")
         return sonkwo_valid, steampy_valid
 
     async def _reconcile_inventory(self, sonkwo_valid, steampy_valid):

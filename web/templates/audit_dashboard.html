@@ -191,14 +191,16 @@
             const missingBody = document.getElementById('missing_body');
             const missingList = d.details.missing_from_steampy || [];
 
-            // 从 trace_details 中提取待售商品的完整信息
+            // 从 trace_details 中提取待售商品的完整信息（排除损毁的）
             const missingItems = (d.details.trace_details || [])
-                .filter(item => item.tag === '待售' || item.tag === '遗珠')
+                .filter(item => (item.tag === '待售' || item.tag === '遗珠') && !item.damaged)
                 .map(item => ({
+                    uid: item.uid || '',  // 🆕 唯一 ID，用于精确查找
                     name: item.source_name,
                     cost: item.cost,
-                    cd_key: item.cd_key || '',  // 从 trace_details 获取 CDKey
-                    uid: item.uid || ''
+                    // 🚨 CDKey 不返回给前端，保护敏感信息
+                    // cd_key: item.cd_key || '',
+                    damaged: item.damaged || false
                 }));
 
             // 更新待售商品计数
@@ -212,14 +214,15 @@
                         <div class="flex-1 min-w-0">
                             <div class="font-medium truncate" title="${item.name}">🟡 ${item.name}</div>
                             <div class="text-xs text-gray-500 mt-1">💰 成本：¥${item.cost?.toFixed(2) || '0.00'}</div>
+                            <div class="text-xs text-gray-600 mt-0.5 font-mono">ID: ${item.uid}</div>
                         </div>
                         <div class="flex items-center gap-2 flex-shrink-0">
-                            <button onclick="listSingleItem('${encodeURIComponent(item.name)}', '${encodeURIComponent(item.cd_key || '')}', ${item.cost || 0})"
+                            <button onclick="listSingleItem('${encodeURIComponent(item.uid)}', '${encodeURIComponent(item.name)}', ${item.cost || 0})"
                                     class="px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-xs transition flex items-center gap-1"
                                     title="查询 SteamPy 价格并上架此商品">
                                 🚀 上架此项
                             </button>
-                            <button onclick="markAsDamaged('${encodeURIComponent(item.name)}', '${encodeURIComponent(item.cd_key || '')}')"
+                            <button onclick="markAsDamaged('${encodeURIComponent(item.uid)}', '${encodeURIComponent(item.name)}')"
                                     class="px-3 py-1.5 bg-red-900/50 hover:bg-red-800 rounded text-xs transition"
                                     title="标记为损毁，只记成本">
                                 🚫 标记损毁
@@ -288,13 +291,13 @@
     let autoListInProgress = false;
 
     // 🚀 单个商品上架函数
-    async function listSingleItem(name, cdKey, cost) {
+    async function listSingleItem(uid, name, cost) {
         if (autoListInProgress) {
             alert("⏳ 上架任务正在进行中，请稍候...");
             return;
         }
 
-        const confirmMsg = `🚀 准备上架：${name}\n\n系统将：\n1. 查询 SteamPy 市场价格\n2. 以略低于市场的价格自动上架\n3. 发送飞书通知\n\n💰 采购成本：¥${cost}\n🔑 CDKey: ${cdKey ? cdKey.substring(0, 5) + '***' : '未知'}\n\n⚠️ 注意：利润不足或会亏本的商品将自动跳过\n\n确认继续？`;
+        const confirmMsg = `🚀 准备上架：${name}\n\n系统将：\n1. 查询 SteamPy 市场价格\n2. 以略低于市场的价格自动上架\n3. 发送飞书通知\n\n💰 采购成本：¥${cost}\n🆔 商品 ID: ${uid}\n\n⚠️ 注意：利润不足或会亏本的商品将自动跳过\n\n确认继续？`;
         if (!confirm(confirmMsg)) {
             return;
         }
@@ -318,9 +321,10 @@
                     ...headers
                 },
                 body: JSON.stringify({
+                    uid: decodeURIComponent(uid),
                     name: decodeURIComponent(name),
-                    cd_key: decodeURIComponent(cdKey),
                     cost: parseFloat(cost)
+                    // 🚨 CDKey 由后端从采购账本中查找，不经过前端
                 })
             });
 
@@ -357,8 +361,8 @@
     }
 
     // 🚫 标记损毁函数
-    async function markAsDamaged(name, cdKey) {
-        const confirmMsg = `🚫 确认标记为损毁？\n\n游戏：${name}\n\n标记为损毁后：\n├─ 只记录成本\n├─ 不允许上架\n└─ 在财务报表中单独显示\n\n确认继续？`;
+    async function markAsDamaged(uid, name) {
+        const confirmMsg = `🚫 确认标记为损毁？\n\n游戏：${name}\n🆔 商品 ID: ${uid}\n\n标记为损毁后：\n├─ 只记录成本\n├─ 不允许上架\n└─ 在财务报表中单独显示\n\n确认继续？`;
         if (!confirm(confirmMsg)) {
             return;
         }
@@ -373,8 +377,9 @@
                     ...headers
                 },
                 body: JSON.stringify({
-                    name: decodeURIComponent(name),
-                    cd_key: decodeURIComponent(cdKey || '')
+                    uid: decodeURIComponent(uid),
+                    name: decodeURIComponent(name)
+                    // 🚨 CDKey 由后端从采购账本中查找，不经过前端
                 })
             });
 

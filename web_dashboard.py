@@ -649,6 +649,8 @@ async def list_single_item(request: Request, token: str = Depends(verify_token))
     单个商品上架接口
 
     查询 SteamPy 市场价格，自动定价并上架单个商品。
+    🆔 使用 uid 精确查找，确保找到正确的商品
+    🚨 CDKey 由后端从采购账本中查找，不经过前端
     """
     global global_commander
 
@@ -660,19 +662,53 @@ async def list_single_item(request: Request, token: str = Depends(verify_token))
 
     try:
         data = await request.json()
+        uid = data.get("uid", "")
         name = data.get("name", "")
-        cd_key = data.get("cd_key", "")
         cost = float(data.get("cost", 0))
 
-        if not name or not cd_key:
+        if not uid:
             return {
                 "success": False,
-                "message": "缺少必要参数"
+                "message": "缺少必要参数：商品 ID"
+            }
+
+        # 🚀 从采购账本中根据 uid 查找 CDKey
+        import json
+        import os
+        ledger_file = "data/purchase_ledger.json"
+        cd_key = None
+        found_item = None
+
+        if os.path.exists(ledger_file):
+            with open(ledger_file, "r", encoding="utf-8") as f:
+                purchase_data = json.load(f)
+
+            # 精确匹配 uid
+            for item in purchase_data:
+                # uid 格式：SK_{order_id}_{idx}
+                item_uid = f"SK_{item.get('order_id', 'unknown')}_{purchase_data.index(item)}"
+                if item_uid == uid or item.get('cd_key') == uid:
+                    if item.get("cd_key") and not item.get("damaged"):
+                        cd_key = item.get("cd_key")
+                        found_item = item
+                        break
+
+            # 如果 uid 没找到，尝试直接匹配（兼容旧格式）
+            if not cd_key:
+                for idx, item in enumerate(purchase_data):
+                    if item.get("name") == name and abs(float(item.get("cost", 0)) - cost) < 0.01:
+                        if item.get("cd_key") and not item.get("damaged"):
+                            cd_key = item.get("cd_key")
+                            found_item = item
+                            break
+
+        if not cd_key:
+            return {
+                "success": False,
+                "message": f"未找到商品 (ID: {uid}) 的 CDKey，请检查采购账本"
             }
 
         # 检查是否已上架
-        import json
-        import os
         sales_file = "data/steampy_sales.json"
         if os.path.exists(sales_file):
             with open(sales_file, "r", encoding="utf-8") as f:
@@ -723,13 +759,17 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
     标记商品为损毁
 
     损毁商品只记成本，不允许上架。
+    🆔 使用 uid 精确查找，确保找到正确的商品
+    🚨 CDKey 由后端从采购账本中查找，不经过前端
     """
+    global global_commander
+
     try:
         data = await request.json()
+        uid = data.get("uid", "")
         name = data.get("name", "")
-        cd_key = data.get("cd_key", "")  # 可选，如果有则一起保存
 
-        if not name:
+        if not name and not uid:
             return {
                 "success": False,
                 "message": "缺少必要参数"
@@ -741,34 +781,47 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
         ledger_file = "data/purchase_ledger.json"
         damaged_file = "data/damaged_items.json"
 
+        # 从采购账本中找到对应的商品，获取 CDKey 和成本
+        found_item = None
+        cd_key = ""
+        if os.path.exists(ledger_file):
+            with open(ledger_file, "r", encoding="utf-8") as f:
+                purchase_data = json.load(f)
+
+            # 优先匹配 uid
+            if uid:
+                for idx, item in enumerate(purchase_data):
+                    item_uid = f"SK_{item.get('order_id', 'unknown')}_{idx}"
+                    if item_uid == uid:
+                        found_item = item
+                        cd_key = item.get("cd_key", "")
+                        item["damaged"] = True
+                        break
+
+            # 如果 uid 没找到，尝试匹配 name
+            if not found_item and name:
+                for item in purchase_data:
+                    if item.get("name") == name and not item.get("damaged"):
+                        found_item = item
+                        cd_key = item.get("cd_key", "")
+                        item["damaged"] = True
+                        break
+
+            # 保存更新后的采购账本
+            with open(ledger_file, "w", encoding="utf-8") as f:
+                json.dump(purchase_data, f, ensure_ascii=False, indent=2)
+
         # 加载损毁列表
         damaged_items = []
         if os.path.exists(damaged_file):
             with open(damaged_file, "r", encoding="utf-8") as f:
                 damaged_items = json.load(f)
 
-        # 从采购账本中找到对应的商品，获取 CDKey
-        found_item = None
-        if os.path.exists(ledger_file):
-            with open(ledger_file, "r", encoding="utf-8") as f:
-                purchase_data = json.load(f)
-
-            for item in purchase_data:
-                if item.get("name") == name:
-                    found_item = item
-                    if not cd_key:  # 如果没有传入 CDKey，使用账本中的
-                        cd_key = item.get("cd_key", "")
-                    # 同时更新采购账本中的 damaged 字段
-                    item["damaged"] = True
-
-            # 保存更新后的采购账本
-            with open(ledger_file, "w", encoding="utf-8") as f:
-                json.dump(purchase_data, f, ensure_ascii=False, indent=2)
-
         # 添加损毁标记（同时保存 name 和 cd_key）
         damaged_entry = {
-            "name": name,
+            "name": name or (found_item.get("name") if found_item else "Unknown"),
             "cd_key": cd_key,
+            "uid": uid,
             "marked_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "reason": "用户手动标记"
         }
@@ -778,9 +831,29 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
         with open(damaged_file, "w", encoding="utf-8") as f:
             json.dump(damaged_items, f, ensure_ascii=False, indent=2)
 
+        # 🚀 发送飞书通知
+        if global_commander and global_commander.notifier:
+            # CDKey 脱敏处理
+            cd_key_display = f"{cd_key[:5]}***{cd_key[-3:]}" if len(cd_key) > 8 else "***"
+
+            await global_commander.notifier.send_text(
+                f"🚫 [损毁标记通知]\n"
+                f"{'═'*50}\n"
+                f"🎮 游戏名称：{found_item.get('name') if found_item else name}\n"
+                f"💰 采购成本：¥{found_item.get('cost', 0) if found_item else 0}\n"
+                f"🔑 CDKey: {cd_key_display}\n"
+                f"⏰ 标记时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"{'─'*50}\n"
+                f"📌 处理结果：\n"
+                f"├─ 已从待售列表中移除\n"
+                f"├─ 成本仍计入财务报表\n"
+                f"└─ 严禁上架（系统自动拦截）\n"
+                f"{'═'*50}"
+            )
+
         return {
             "success": True,
-            "message": f"已将 {name} 标记为损毁（成本：¥{found_item.get('cost', 0) if found_item else 0}）"
+            "message": f"已将 {found_item.get('name') if found_item else name} 标记为损毁（成本：¥{found_item.get('cost', 0) if found_item else 0}）"
         }
 
     except Exception as e:
