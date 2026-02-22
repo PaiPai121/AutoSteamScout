@@ -495,9 +495,36 @@ async def get_history_api():
         "history": AGENT_STATE.get("history", [])[:config.SCOUT_CONFIG["MAX_HISTORY"]]
     }
 
-# --- 1. 财务数据接口 ---
+# --- 🔐 API Token 认证中间件 ---
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+security = HTTPBearer(auto_error=False)
+
+async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """验证 API Token（如果配置了的话）"""
+    if not config.API_TOKEN:
+        return None  # 未配置 Token，跳过认证
+    
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="缺少认证令牌",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if credentials.credentials != config.API_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="认证令牌无效",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return credentials.credentials
+
+# --- 1. 财务数据接口（需要认证） ---
 @app.get("/api/audit_stats")
-async def get_audit_stats():
+async def get_audit_stats(token: str = Depends(verify_token)):
     from Finance_Center.auditor import FinanceAuditor
     # 🚀 直接调用你刚才写好的详细审计函数
     try:

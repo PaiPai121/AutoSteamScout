@@ -37,6 +37,8 @@ coverage.xml
 
 # Environment variables
 .env
+.env.local
+.env.*.local
 .venv
 env/
 venv/
@@ -68,6 +70,7 @@ steampy_user_data/
 cookies.txt
 config.ini
 settings.json
+config.py  # ⚠️ 保护 API Token 密码
 
 # Logs
 *.log

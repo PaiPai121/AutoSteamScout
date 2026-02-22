@@ -108,12 +108,12 @@ class FinanceAuditor:
 
             trace_details.append({
                 "source_name": p_name,
-                "uid": f"{p_key[:5]}***",
                 "tag": tag,
                 "cost": p_cost,
                 "est_revenue": round(revenue, 2),
                 "profit": round(revenue - p_cost, 2),  # 🚀 所有状态都计算真实盈亏
                 "mapped_name": active_map.get(p_key, {}).get('name') or sold_map.get(p_key, {}).get('name') or '-'  # 🆕 映射销售名
+                # 🚨 不返回 uid/cd_key，防止前端泄露
             })
 
         # 合并幽灵资产 (为了报表完整性)
@@ -351,7 +351,7 @@ class FinanceAuditor:
         # 🚀 从 trace_details 中提取真正的"遗珠"清单（单一事实源）
         trace_details = financial_summary["trace_details"]
         missing_from_trace = [
-            f"{t['source_name']} ({t['uid']})"
+            t['source_name']
             for t in trace_details
             if t['tag'] == '遗珠'
         ]

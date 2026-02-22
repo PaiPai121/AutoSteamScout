@@ -1,9 +1,15 @@
-# config.py
+# config.py 示例文件
+# 使用方法：
+# 1. 复制此文件为 config.py
+# 2. 根据你的需求修改配置
+# 3. ⚠️ 不要将 config.py 推送到 GitHub！
+
 from pathlib import Path
 import os
 
 # 这行代码会自动获取 config.py 所在的文件夹路径
 PROJECT_ROOT = Path(__file__).resolve().parent
+
 # --- 资源与调试控制 ---
 DEBUG_MODE = False           # 总开关
 ENABLE_SCREENSHOTS = True   # 截图开关（建议默认关闭，爆内存元凶）
@@ -30,12 +36,12 @@ SCOUT_CONFIG = {
     "SLEEP_INTERVAL": 1.0,       # 巡航项之间的间隔 (秒)
     "MAX_HISTORY": 100,          # Web 历史记录保存上限
     "RETRY_COUNT": 3,            # AI 接口或网络请求重试次数
-    # 💡 [新增]：巡航分类词任务清单
+    # 💡 巡航分类词任务清单
     "SEARCH_TASKS": [
-        "", "steam", "action", "rpg", "strategy", 
+        "", "steam", "action", "rpg", "strategy",
         "adventure", "indie", "capcom", "bandai"
     ],
-    # 💡 [新增]：单任务扫描深度 (页数)
+    # 💡 单任务扫描深度 (页数)
     "MAX_PAGES_PER_TASK": 3,
     "BASE_CYCLE_TIME": 6000,      # 基础巡航周期 (秒)
     "JITTER_RANGE": 600,          # 随机抖动范围 (秒)，即基础值 ±600s
@@ -43,13 +49,15 @@ SCOUT_CONFIG = {
 
 # --- 飞书通知 ---
 NOTIFIER_CONFIG = {
-    "WEBHOOK_URL": "https://open.feishu.cn/open-apis/bot/v2/hook/70423ec9-8744-40c2-a3af-c94bbbd0990a",
+    "WEBHOOK_URL": "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_WEBHOOK_HERE",
     "REPORT_TITLE": "🛰️ Arbitrage Sentinel 实时战报",
 }
 
 # --- 路径配置 ---
 PATH_CONFIG = {
     "DB_NAME": "steamspy_all.json",
+    "HISTORY_FILE": os.path.join(PROJECT_ROOT, "arbitrage_history.json"),
+    "LOG_DIR": os.path.join(PROJECT_ROOT, "logs"),
 }
 
 # --- Web 界面控制 ---
@@ -65,12 +73,10 @@ WEB_CONFIG = {
 # 方式 1：环境变量（推荐，更安全）
 #   export SENTINEL_API_TOKEN="888888"
 # 方式 2：直接写在这里（方便，但不要推送到 GitHub）
-API_TOKEN = os.getenv("SENTINEL_API_TOKEN", "niya123")  # 默认密码 888888
+API_TOKEN = os.getenv("SENTINEL_API_TOKEN", "888888")  # 默认密码 888888
 # ⚠️ 警告：如果修改了密码，请不要推送到 GitHub！
 # 建议：使用环境变量，或者在这里设置后把 config.py 加入 .gitignore
 
-PATH_CONFIG = {
-    "DB_NAME": "steamspy_all.json",
-    "HISTORY_FILE": os.path.join(PROJECT_ROOT, "arbitrage_history.json"),
-    "LOG_DIR": os.path.join(PROJECT_ROOT, "logs"),
-}
+# --- AI 配置（如果需要） ---
+# ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "")  # 智谱 AI API 密钥
+# ZHIPU_MODEL = os.getenv("ZHIPU_MODEL", "glm-4-flash")  # 使用的 AI 模型

@@ -2,6 +2,46 @@
 
 SteamCN 哨兵是一个高级自动化检测系统，旨在识别 Steam 和 Sonkwo（杉果）游戏平台之间的盈利机会。该工具利用浏览器自动化监控价格差异，并实时识别潜在的机会。
 
+## 🚀 快速开始
+
+### 1️⃣ 复制配置文件
+
+```bash
+cp config.example.py config.py
+cp .env.example .env
+```
+
+### 2️⃣ 设置访问密码
+
+编辑 `config.py` 第 68 行：
+```python
+API_TOKEN = os.getenv("SENTINEL_API_TOKEN", "888888")
+#                                   ↑ 改成你想要的密码
+```
+
+### 3️⃣ 安装依赖
+
+```bash
+pip install -r requirements.txt
+playwright install chromium
+```
+
+### 4️⃣ 启动服务
+
+```bash
+python web_dashboard.py
+```
+
+### 5️⃣ 手机/浏览器访问
+
+```
+http://你的服务器 IP:8000/audit
+```
+
+首次访问需要输入密码（默认：`888888`），之后自动登录。
+
+---
+
 ## 概述
 
 系统包含两个主要模块：
