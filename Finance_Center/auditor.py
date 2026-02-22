@@ -389,12 +389,24 @@ class FinanceAuditor:
             ghost_names
         )
 
+        # 🚀 4. 战略级 ROI 核算
+        # 从 trace_details 中提取"已售"总成本（财务层精准分流）
+        sold_cost = sum(t['cost'] for t in profit_result['trace_details'] if t['tag'] == '已售')
+        
+        # 计算已售部分的 ROI (实利 / 已售成本)
+        sold_roi = (profit_result["current_profit"] / sold_cost * 100) if sold_cost > 0 else 0
+        
+        # 计算全盘预期 ROI (预期总利 / 总投入)
+        total_exp_roi = (profit_result["expected_profit"] / total_investment * 100) if total_investment > 0 else 0
+
         return {
             "total_investment": round(total_investment, 2),
             "realized_cash": round(realized_cash, 2),
             "floating_asset": round(floating_asset, 2),
             "current_profit": profit_result["current_profit"],
             "expected_profit": profit_result["expected_profit"],
+            "sold_roi": round(sold_roi, 2),  # 🟢 新增：已售 ROI
+            "total_expected_roi": round(total_exp_roi, 2),  # 🔵 新增：全盘预期 ROI
             "trace_details": profit_result["trace_details"],  # 🚀 透传交易明细
             "stats": counts
         }
@@ -427,6 +439,8 @@ class FinanceAuditor:
                 "floating_asset": financial_summary["floating_asset"],
                 "current_profit": financial_summary["current_profit"],
                 "expected_profit": financial_summary["expected_profit"],
+                "sold_roi": financial_summary["sold_roi"],  # 🚀 新增：已售 ROI
+                "total_expected_roi": financial_summary["total_expected_roi"],  # 🚀 新增：全盘预期 ROI
                 "recovery_rate": round(
                     (realized_cash / total_investment * 100) if total_investment > 0 else 0,
                     2

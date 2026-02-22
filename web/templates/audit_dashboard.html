@@ -13,9 +13,14 @@
 <body class="p-8">
     <div class="max-w-6xl mx-auto">
         <div class="flex justify-between items-end mb-8 border-b border-gray-700 pb-4">
-            <div>
-                <h1 class="text-3xl font-bold text-blue-400">📊 母舰资产全息审计</h1>
-                <p class="text-gray-500 mt-1" id="update_time">正在连接母舰数据库...</p>
+            <div class="flex items-center gap-4">
+                <a href="/" class="text-gray-400 hover:text-blue-400 transition text-sm flex items-center gap-2">
+                    ← 返回主页
+                </a>
+                <div>
+                    <h1 class="text-3xl font-bold text-blue-400">📊 母舰资产全息审计</h1>
+                    <p class="text-gray-500 text-sm mt-1" id="update_time">正在连接母舰数据库...</p>
+                </div>
             </div>
             <button onclick="location.reload()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded text-sm transition">🔄 刷新数据</button>
         </div>
@@ -38,9 +43,12 @@
                 <div class="text-gray-500 text-xs uppercase mb-1">已回收现金 (到手)</div>
                 <div id="realized_cash" class="text-3xl font-bold text-blue-400 stat-value">¥ 0.00</div>
             </div>
-            <div class="glass-card p-6 border-l-4 border-l-blue-500">
-                <div class="text-gray-500 text-xs uppercase mb-1">回本进度</div>
-                <div id="recovery_rate" class="text-3xl font-bold text-blue-400 stat-value">0%</div>
+            <div class="glass-card p-6 border-l-4 border-l-purple-500">
+                <div class="text-gray-500 text-xs uppercase mb-1 font-bold">🚀 投资回报率 (ROI)</div>
+                <div class="flex flex-col gap-1">
+                    <div id="sold_roi" class="text-3xl font-bold text-purple-400 stat-value">0.00%</div>
+                    <div class="text-xs text-gray-500">预期全盘：<span id="exp_roi" class="text-gray-400">0%</span></div>
+                </div>
             </div>
             <div class="glass-card p-6 border-l-4 border-l-yellow-500">
                 <div class="text-gray-500 text-xs uppercase mb-1">货架总净值</div>
@@ -101,30 +109,42 @@
             const res = await fetch('/api/audit_stats');
             if (!res.ok) throw new Error("网络响应异常");
             const d = await res.json();
-            
+
             // 💡 核心保护 1：如果后端返回的时间戳没变，直接切断后续逻辑，网页动都不动一下
             if (lastUpdateAt === d.update_at) {
                 console.log("🧊 账本未变动，保持静默...");
                 return;
             }
-            
-            // 💡 核心保护 2：只有时间戳变了（说明后台算完新账了），才开始“贴纸”更新
+
+            // 💡 核心保护 2：只有时间戳变了（说明后台算完新账了），才开始"贴纸"更新
             console.log(`🚀 侦测到新账本 [${d.update_at}]，正在更新视图...`);
             lastUpdateAt = d.update_at;
 
             // --- 以下是静默替换逻辑，不会引起白屏或归零 ---
-            document.getElementById('update_time').innerText = "最后清算: " + d.update_at;
+            document.getElementById('update_time').innerText = "最后清算：" + d.update_at;
             document.getElementById('total_investment').innerText = "¥ " + d.summary.total_investment;
             document.getElementById('realized_cash').innerText = "¥ " + d.summary.realized_cash;
-            document.getElementById('recovery_rate').innerText = d.summary.recovery_rate + "%";
             document.getElementById('floating_asset').innerText = "¥ " + d.summary.floating_asset;
-            // 在 loadAudit 函数内的 document.getElementById 区域添加：
+
+            // 🚀 ROI 数据接驳（带 Null 守护）
+            const rawSoldRoi = d.summary.sold_roi ?? 0;
+            const rawExpRoi = d.summary.total_expected_roi ?? 0;
+            document.getElementById('sold_roi').innerText = rawSoldRoi + "%";
+            document.getElementById('exp_roi').innerText = rawExpRoi + "%";
+
             document.getElementById('current_profit').innerText = "¥ " + d.summary.current_profit;
             document.getElementById('expected_profit').innerText = "¥ " + d.summary.expected_profit;
 
             // 顺便做个颜色高亮逻辑：如果利润是负的（还没回本），显示红色，正的显示绿色
-            const cp = parseFloat(d.summary.current_profit);
+            const cp = parseFloat(d.summary.current_profit) || 0;
             document.getElementById('current_profit').className = `text-3xl font-bold stat-value ${cp >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+            // 🚀 ROI 颜色：>20% 绿色优秀，5-20% 紫色正常，<5% 红色警示
+            const roiVal = parseFloat(rawSoldRoi) || 0;
+            let roiColor = "text-purple-400";
+            if (roiVal > 20) roiColor = "text-green-400";
+            else if (roiVal < 5) roiColor = "text-red-400";
+            document.getElementById('sold_roi').className = `text-3xl font-bold stat-value ${roiColor}`;
             // 渲染表格 (只替换 tbody 内部，不闪烁)
             const agingBody = document.getElementById('aging_body');
             agingBody.innerHTML = d.details.on_shelf_aging.map(item => `
@@ -146,7 +166,7 @@
             
             // 🚀 稳定排序：主键为状态，次键为采购成本（降序），再次键为名称（字典序）
             const sortedDetails = [...traceDetails].sort((a, b) => {
-                const order = { "已售": 0, "在售": 1, "遗珠": 2 };
+                const order = { "已售": 0, "在售": 1, "遗珠": 2, "来源不明": 3 };
                 const statusDiff = (order[a.tag] ?? 99) - (order[b.tag] ?? 99);
                 if (statusDiff !== 0) return statusDiff;
                 // 状态相同时，按成本降序排列
@@ -196,7 +216,7 @@
     window.onload = () => {
         loadAudit(); // 进页面先抓一次
         // 缩短探测频率至 15 秒也没关系，因为这种方式不刷页面，完全无感
-        setInterval(loadAudit, 15000); 
+        setInterval(loadAudit, 15000);
     };
     </script>
 </body>
