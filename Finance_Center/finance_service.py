@@ -189,7 +189,35 @@ class FinanceService:
 
                 if not cmd or cmd == "exit": break
                 elif cmd == "goto": await self.action_verify_and_goto_orders(debug_page)
-                elif cmd == "list": await self.action_fetch_ledger(debug_page)
+                elif cmd == "back":
+                    await debug_page.go_back()
+                    print("⬅️ 正在退回上一页...")
+                elif cmd == "list": 
+                    entries = await self.action_fetch_ledger(debug_page)
+                    if entries:
+                        print("\n📋 [抓取快照预览]")
+                        print("-" * 65)
+                        # 仅显示最近的 5 条，避免刷屏
+                        for e in entries:
+                            print(f"  ID: {e['order_id']} | UID: {e['uid']} | {e['name'][:15]}... | ¥{e['cost']}")
+                        print("-" * 65)
+                elif cmd.startswith("click "):
+                    oid = cmd.replace("click ", "").strip()
+                    print(f"🖱️ 尝试通过【查看详情】按钮进入订单: {oid}")
+                    try:
+                        # 1. 先定位包含该订单号的那个大方块 (.self-order-item)
+                        # 2. 在方块内部寻找 .see-detail 按钮并点击
+                        order_item = debug_page.locator(f".self-order-item:has-text('{oid}')")
+                        detail_btn = order_item.locator(".see-detail")
+                        
+                        if await detail_btn.count() > 0:
+                            await detail_btn.click()
+                            await debug_page.wait_for_load_state("networkidle")
+                            print(f"🎯 成功进入详情页。请检查状态，若正常请执行 [shot]")
+                        else:
+                            print(f"❌ 列表页当前页没找到订单 {oid} 的详情按钮")
+                    except Exception as e:
+                        print(f"🚨 点击动作崩溃: {e}")
                 elif cmd == "shot":
                     # 💡 增加当前 URL 标识，方便区分是列表页还是详情页
                     page_type = "detail" if "orders/" in debug_page.url else "list"
@@ -212,6 +240,21 @@ class FinanceService:
                             await self._log_and_shot(debug_page, f"detail_{order_id}")
                         except Exception as e:
                             print(f"❌ 穿透失败: {e}")
+                # --- 核心：通用点击 (Tap) ---
+                elif cmd.lower().startswith("tap "):
+                    target = cmd[4:].strip()
+                    print(f"🎯 尝试通用点击: {target}")
+                    try:
+                        # 逻辑：先尝试作为 CSS 选择器，如果找不到，尝试作为文本
+                        selector = debug_page.locator(target).first
+                        if await selector.count() == 0:
+                            # 尝试文本匹配
+                            selector = debug_page.get_by_text(target).first
+                        
+                        await selector.click()
+                        print(f"✅ 点击完成 (Target: {target})")
+                    except Exception as e:
+                        print(f"❌ 点击失败: {str(e)}")
             await debug_page.close()
         except Exception as e: print(f"🚨 交互崩溃: {e}")
         finally: print("🔙 已返回主巡航。")
