@@ -499,8 +499,33 @@ async def get_history_api():
 @app.get("/api/audit_stats")
 async def get_audit_stats():
     from Finance_Center.auditor import FinanceAuditor
-    # 直接调用你刚才写好的详细审计函数
-    return await FinanceAuditor().run_detailed_audit()
+    # 🚀 直接调用你刚才写好的详细审计函数
+    try:
+        return await FinanceAuditor().run_detailed_audit()
+    except Exception as e:
+        import logging
+        import datetime
+        logging.getLogger("Sentinel").error(f"🚨 [API] 审计接口异常：{e}")
+        # 🚀 返回完整骨架结构，防止前端崩溃
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return {
+            "update_at": now,
+            "summary": {
+                "total_investment": 0.0,
+                "realized_cash": 0.0,
+                "floating_asset": 0.0,
+                "current_profit": 0.0,
+                "expected_profit": 0.0,
+                "recovery_rate": 0.0,
+                "stats": {"sold": 0, "active": 0, "closed": 0, "blacklisted": 0}
+            },
+            "details": {
+                "on_shelf_aging": [],
+                "missing_from_steampy": [],
+                "ghost_inventory": [],
+                "trace_details": []
+            }
+        }
 
 # --- 5. 财务自动化闹钟 ---
 async def audit_watchdog():

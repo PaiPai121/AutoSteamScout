@@ -70,6 +70,26 @@
                 <div id="missing_body" class="space-y-3"></div>
             </div>
         </div>
+
+        <!-- 🚀 新增：全息资产溯源清单 -->
+        <div class="glass-card p-6 mt-8">
+            <h3 class="text-lg font-bold mb-4 text-purple-400">📋 全息资产溯源清单 (全量交易明细)</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="text-gray-500 border-b border-gray-800">
+                        <tr>
+                            <th class="pb-3">状态</th>
+                            <th class="pb-3">采购名称</th>
+                            <th class="pb-3">映射销售名</th>
+                            <th class="pb-3 text-right">采购成本</th>
+                            <th class="pb-3 text-right">预估收入</th>
+                            <th class="pb-3 text-right">盈亏</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trace_body"></tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -120,8 +140,58 @@
                 <div class="p-3 bg-red-900/10 border border-red-900/20 rounded text-sm text-red-200 animate-pulse">❓ ${name}</div>
             `).join('') || '<div class="text-green-500 text-sm italic">✨ 仓库已清空，全部商品已在售</div>';
 
-        } catch (e) { 
-            console.warn("📡 信号干扰中，正在维持当前全息投影..."); 
+            // 🚀 渲染全息资产溯源清单（交易明细）
+            const traceBody = document.getElementById('trace_body');
+            const traceDetails = d.details.trace_details || [];
+            
+            // 🚀 稳定排序：主键为状态，次键为采购成本（降序），再次键为名称（字典序）
+            const sortedDetails = [...traceDetails].sort((a, b) => {
+                const order = { "已售": 0, "在售": 1, "遗珠": 2 };
+                const statusDiff = (order[a.tag] ?? 99) - (order[b.tag] ?? 99);
+                if (statusDiff !== 0) return statusDiff;
+                // 状态相同时，按成本降序排列
+                const costDiff = b.cost - a.cost;
+                if (Math.abs(costDiff) > 0.01) return costDiff;
+                // 成本也相同时，按名称字典序排列（确保稳定性）
+                return a.source_name.localeCompare(b.source_name, 'zh-Hans-CN');
+            });
+            
+            traceBody.innerHTML = sortedDetails.map(item => {
+                // 状态标签样式
+                const tagStyles = {
+                    "已售": "bg-green-900/30 text-green-400 border-green-800",
+                    "在售": "bg-blue-900/30 text-blue-400 border-blue-800",
+                    "遗珠": "bg-yellow-900/30 text-yellow-400 border-yellow-800"
+                };
+                const tagStyle = tagStyles[item.tag] || "bg-gray-800 text-gray-400";
+                
+                // 盈亏样式
+                let profitClass = "text-gray-400";
+                let profitDisplay = item.profit;
+                if (item.profit !== "已核销") {
+                    const profitVal = parseFloat(item.profit);
+                    if (profitVal > 0) profitClass = "text-green-400 font-bold";
+                    else if (profitVal < 0) profitClass = "text-red-400 font-bold";
+                    profitDisplay = `¥${item.profit}`;
+                } else {
+                    profitDisplay = "✅ 已核销";
+                }
+                
+                return `
+                <tr class="border-b border-gray-800 hover:bg-gray-800/50 transition-all duration-200">
+                    <td class="py-3">
+                        <span class="px-2 py-1 rounded text-xs border ${tagStyle}">${item.tag}</span>
+                    </td>
+                    <td class="py-3 font-medium text-gray-300">${item.source_name}</td>
+                    <td class="py-3 text-gray-500 text-sm">${item.mapped_name !== item.source_name ? item.mapped_name : '-'}</td>
+                    <td class="py-3 text-right text-red-400 font-mono">¥${item.cost.toFixed(2)}</td>
+                    <td class="py-3 text-right text-blue-400 font-mono">¥${item.est_revenue.toFixed(2)}</td>
+                    <td class="py-3 text-right font-mono ${profitClass}">${profitDisplay}</td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="6" class="py-8 text-center text-gray-500">📊 暂无交易记录</td></tr>';
+
+        } catch (e) {
+            console.warn("📡 信号干扰中，正在维持当前全息投影...");
         }
     }
 

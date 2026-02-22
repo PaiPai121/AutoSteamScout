@@ -99,6 +99,10 @@ class FinanceAuditor:
         逻辑原则：采购总额 = 已售成本 + 在售成本 + 遗珠成本
 
         💡 关键修复：使用名称映射表解决中英文命名差异
+        
+        🚀 价格池机制：为每个游戏建立 FIFO 价格队列，确保多价格场景下盈亏精确对应
+
+        🚀 返回：{current_profit, expected_profit, trace_details: [每笔交易明细]}
         """
         try:
             active_items = active_items or []
@@ -115,6 +119,16 @@ class FinanceAuditor:
                 sale_name = item.get('name', '').strip()
                 active_counter[sale_name] += 1
 
+            # 🚀 新增：建立价格池 { "游戏名": [价格 1, 价格 2, ...] }
+            # 目的：解决同名商品挂多个不同价格时，next() 盲抓导致的统计偏移
+            price_pools = {}
+            for item in active_items:
+                name = item.get('name', '').strip()
+                price = self._clean_price(item.get('price', 0))
+                if name not in price_pools:
+                    price_pools[name] = []
+                price_pools[name].append(price)
+
             sold_cost = 0.0
             on_shelf_cost = 0.0
             missing_cost = 0.0
@@ -122,13 +136,13 @@ class FinanceAuditor:
             # 诊断计数器
             unassigned_count = 0
 
-            # 💡 详细日志：打印每笔采购的成本归属
-            # print("\n🔍 [成本溯源详情] 每笔采购的去向：")
-            # print("-" * 70)
+            # 🚀 新增：交易溯源流水（每笔采购的状态 + 盈亏）
+            trace_details = []
 
             for p in sonkwo_valid:
                 p_cost = self._clean_price(p.get("cost", 0))
                 p_name = p.get("name", "").strip()
+                p_uid = p.get("uid", "Unknown")
 
                 # 💡 使用映射后的销售名进行匹配
                 mapped_name = name_mapping.get(p_name, p_name)
@@ -137,41 +151,46 @@ class FinanceAuditor:
                 if missing_counter[mapped_name] > 0:
                     missing_cost += p_cost
                     missing_counter[mapped_name] -= 1
-                    # print(f"  🟡 遗珠成本 | ¥{p_cost:>7.2f} | {p_name}")
+                    tag = "遗珠"
+                    # 遗珠：尚未产生任何收入
+                    est_revenue = 0.0
 
                 # 判定优先级 B：是否在"在售清单"中？（使用映射名）
                 elif active_counter[mapped_name] > 0:
                     on_shelf_cost += p_cost
                     active_counter[mapped_name] -= 1
-                    # print(f"  🔵 在售成本 | ¥{p_cost:>7.2f} | {p_name}")
+                    tag = "在售"
+                    # 🚀 从价格池中按顺序"消费"一个价格 (FIFO 先进先出)
+                    # 确保第一笔采购对应第一个挂单价格，物理同步
+                    if mapped_name in price_pools and price_pools[mapped_name]:
+                        price_val = price_pools[mapped_name].pop(0)
+                        est_revenue = price_val * self.PAYOUT_RATE
+                    else:
+                        est_revenue = 0.0
 
                 # 判定优先级 C：若既不在仓库也不在货架，必然已售
                 else:
                     sold_cost += p_cost
                     unassigned_count += 1
-                    # print(f"  🟢 已售成本 | ¥{p_cost:>7.2f} | {p_name}")
+                    tag = "已售"
+                    # 已售：收入已计入 realized_cash，这里标记为"已核销"
+                    est_revenue = 0.0
 
-            # print("-" * 70)
-            # print(f"  合计：已售 ¥{sold_cost:.2f} + 在售 ¥{on_shelf_cost:.2f} + 遗珠 ¥{missing_cost:.2f} = ¥{sold_cost + on_shelf_cost + missing_cost:.2f}")
+                # 🚀 记录这笔交易的完整溯源信息
+                trace_details.append({
+                    "source_name": p_name,
+                    "uid": p_uid,
+                    "mapped_name": mapped_name,
+                    "tag": tag,
+                    "cost": p_cost,
+                    "est_revenue": round(est_revenue, 2),
+                    "profit": round(est_revenue - p_cost, 2) if tag != "已售" else "已核销"
+                })
 
             # 财务校验：各部分成本之和必须等于总投入
             calculated_total = sold_cost + on_shelf_cost + missing_cost
             if abs(calculated_total - total_investment) > 0.01:
                 print(f"⚠️ [审计预警] 成本分流不平衡！差额：{calculated_total - total_investment:.2f}")
-
-            # 💡 详细日志：打印利润计算过程
-            # print("\n💰 [利润计算详情]")
-            # print("-" * 70)
-            # print(f"  已回笼现金：¥{realized_cash:.2f}")
-            # print(f"  已售成本：  ¥{sold_cost:.2f}")
-            # print(f"  已实现利润：¥{realized_cash - sold_cost:.2f} (现金 - 已售成本)")
-            # print("-" * 70)
-            # print(f"  在售资产：  ¥{floating_asset:.2f}")
-            # print(f"  在售成本：  ¥{on_shelf_cost:.2f}")
-            # print(f"  浮动利润：  ¥{floating_asset - on_shelf_cost:.2f} (在售资产 - 在售成本)")
-            # print("-" * 70)
-            # print(f"  总投入：    ¥{total_investment:.2f}")
-            # print(f"  预期总利润：¥{(realized_cash + floating_asset) - total_investment:.2f} (总现金 - 总投入)")
 
             # 诊断日志：如果有未分配成本，打印详情
             if unassigned_count > 0:
@@ -180,12 +199,21 @@ class FinanceAuditor:
             current_profit = round(realized_cash - sold_cost, 2)
             expected_profit = round((realized_cash + floating_asset) - total_investment, 2)
 
-            return current_profit, expected_profit
+            return {
+                "current_profit": current_profit,
+                "expected_profit": expected_profit,
+                "trace_details": trace_details
+            }
 
         except Exception as e:
             import traceback
             print(f"🚨 [财务溯源崩溃] 错误：{e}\n{traceback.format_exc()[-200:]}")
-            return 0.0, 0.0
+            # 🚀 返回完整骨架结构，防止前端崩溃
+            return {
+                "current_profit": 0.0,
+                "expected_profit": 0.0,
+                "trace_details": []
+            }
 
     async def run_detailed_audit(self):
         """
@@ -376,7 +404,8 @@ class FinanceAuditor:
         }
 
         # 3. 穿透利润溯源 (传入名称映射表)
-        current_profit, expected_profit = self._calculate_profit_shadow(
+        # 🚀 现在返回的是字典，包含 trace_details 交易明细
+        profit_result = self._calculate_profit_shadow(
             sonkwo_valid,
             missing_inventory,
             realized_cash,
@@ -390,8 +419,9 @@ class FinanceAuditor:
             "total_investment": round(total_investment, 2),
             "realized_cash": round(realized_cash, 2),
             "floating_asset": round(floating_asset, 2),
-            "current_profit": current_profit,
-            "expected_profit": expected_profit,
+            "current_profit": profit_result["current_profit"],
+            "expected_profit": profit_result["expected_profit"],
+            "trace_details": profit_result["trace_details"],  # 🚀 透传交易明细
             "stats": counts
         }
 
@@ -412,19 +442,20 @@ class FinanceAuditor:
                 "current_profit": financial_summary["current_profit"],
                 "expected_profit": financial_summary["expected_profit"],
                 "recovery_rate": round(
-                    (realized_cash / total_investment * 100) if total_investment > 0 else 0, 
+                    (realized_cash / total_investment * 100) if total_investment > 0 else 0,
                     2
                 ),
                 "stats": financial_summary["stats"]
             },
             "details": {
                 "on_shelf_aging": sorted(
-                    inventory_report['active_items'], 
-                    key=lambda x: x['days'], 
+                    inventory_report['active_items'],
+                    key=lambda x: x['days'],
                     reverse=True
                 ),
                 "missing_from_steampy": inventory_report['missing_inventory'],
-                "ghost_inventory": inventory_report['ghost_inventory']
+                "ghost_inventory": inventory_report['ghost_inventory'],
+                "trace_details": financial_summary["trace_details"]  # 🚀 透传交易明细到 Web
             }
         }
 
