@@ -558,7 +558,7 @@ async def get_audit_stats(token: str = Depends(verify_token)):
 @app.post("/api/auto_list")
 async def auto_list_missing(request: Request, token: str = Depends(verify_token)):
     """
-    一键上架待售商品
+    一键上架待售商品（批量）
 
     从财务审计数据中获取"待售"商品，自动查询 SteamPy 市场价格，
     以略低于市场的价格自动上架，并发送飞书通知。
@@ -574,22 +574,6 @@ async def auto_list_missing(request: Request, token: str = Depends(verify_token)
     try:
         # 获取待售商品列表
         data = await request.json() if await request.body() else {}
-        use_ai_name = data.get("use_ai_name", True)  # 是否使用 AI 匹配的游戏名
-
-        # 从财务审计数据中获取"待售"商品（遗珠）
-        from Finance_Center.auditor import FinanceAuditor
-        audit_result = await FinanceAuditor().run_detailed_audit()
-
-        # 提取待售商品（tag == "遗珠" 的项）
-        missing_items = []
-        for item in audit_result.get("details", {}).get("trace_details", []):
-            if item.get("tag") == "遗珠":
-                # 需要从采购账本中获取完整的 cd_key 和 cost
-                missing_items.append({
-                    "name": item.get("source_name"),
-                    "cd_key": item.get("cd_key", ""),  # 需要从原始数据中获取
-                    "cost": item.get("cost", 0)
-                })
 
         # 💡 更准确的方式：直接从 purchase_ledger.json 中读取未上架的 Key
         import json
@@ -616,10 +600,12 @@ async def auto_list_missing(request: Request, token: str = Depends(verify_token)
         missing_items = []
         for p in purchase_data:
             p_key = p.get("cd_key", "").strip().upper()
-            # 排除：已上架的、退款的、黑名单的
+            # 排除：已上架的、退款的、黑名单的、损毁的
             if p_key in sales_keys:
                 continue
             if "退款" in p.get("status", "") or "REFUN" in p_key:
+                continue
+            if p.get("damaged"):  # 排除损毁的
                 continue
             if p.get("cd_key") and len(p.get("cd_key", "")) > 5:
                 missing_items.append({
@@ -654,6 +640,158 @@ async def auto_list_missing(request: Request, token: str = Depends(verify_token)
         return {
             "success": False,
             "message": f"上架失败：{str(e)}"
+        }
+
+# 🆕 单个商品上架 API 接口
+@app.post("/api/list_single_item")
+async def list_single_item(request: Request, token: str = Depends(verify_token)):
+    """
+    单个商品上架接口
+
+    查询 SteamPy 市场价格，自动定价并上架单个商品。
+    """
+    global global_commander
+
+    if not global_commander:
+        return {
+            "success": False,
+            "message": "系统尚未初始化，请稍后再试"
+        }
+
+    try:
+        data = await request.json()
+        name = data.get("name", "")
+        cd_key = data.get("cd_key", "")
+        cost = float(data.get("cost", 0))
+
+        if not name or not cd_key:
+            return {
+                "success": False,
+                "message": "缺少必要参数"
+            }
+
+        # 检查是否已上架
+        import json
+        import os
+        sales_file = "data/steampy_sales.json"
+        if os.path.exists(sales_file):
+            with open(sales_file, "r", encoding="utf-8") as f:
+                sales_data = json.load(f)
+            sales_keys = {s.get("cd_key", "").strip().upper() for s in sales_data}
+            if cd_key.strip().upper() in sales_keys:
+                return {
+                    "success": False,
+                    "status": "already_listed",
+                    "message": "该商品已在售"
+                }
+
+        # 调用单个商品上架方法
+        async with global_commander.lock:
+            result = await global_commander.auto_lister.list_single_item(
+                purchase_name=name,
+                cd_key=cd_key,
+                purchase_cost=cost
+            )
+
+        # 发送飞书通知
+        await global_commander.auto_lister._send_notification(result)
+
+        return {
+            "success": True,
+            "status": result.status.value,
+            "message": result.message,
+            "listing_price": result.listing_price if hasattr(result, 'listing_price') else None,
+            "profit": result.profit if hasattr(result, 'profit') else None,
+            "market_name": result.market_name if hasattr(result, 'market_name') else None
+        }
+
+    except Exception as e:
+        import logging
+        import traceback
+        error_msg = f"🚨 [单个上架] 异常：{e}\n{traceback.format_exc()}"
+        logging.getLogger("Sentinel").error(error_msg)
+
+        return {
+            "success": False,
+            "message": f"上架失败：{str(e)}"
+        }
+
+# 🆕 标记损毁 API 接口
+@app.post("/api/mark_damaged")
+async def mark_damaged(request: Request, token: str = Depends(verify_token)):
+    """
+    标记商品为损毁
+
+    损毁商品只记成本，不允许上架。
+    """
+    try:
+        data = await request.json()
+        name = data.get("name", "")
+        cd_key = data.get("cd_key", "")  # 可选，如果有则一起保存
+
+        if not name:
+            return {
+                "success": False,
+                "message": "缺少必要参数"
+            }
+
+        # 读取采购账本
+        import json
+        import os
+        ledger_file = "data/purchase_ledger.json"
+        damaged_file = "data/damaged_items.json"
+
+        # 加载损毁列表
+        damaged_items = []
+        if os.path.exists(damaged_file):
+            with open(damaged_file, "r", encoding="utf-8") as f:
+                damaged_items = json.load(f)
+
+        # 从采购账本中找到对应的商品，获取 CDKey
+        found_item = None
+        if os.path.exists(ledger_file):
+            with open(ledger_file, "r", encoding="utf-8") as f:
+                purchase_data = json.load(f)
+
+            for item in purchase_data:
+                if item.get("name") == name:
+                    found_item = item
+                    if not cd_key:  # 如果没有传入 CDKey，使用账本中的
+                        cd_key = item.get("cd_key", "")
+                    # 同时更新采购账本中的 damaged 字段
+                    item["damaged"] = True
+
+            # 保存更新后的采购账本
+            with open(ledger_file, "w", encoding="utf-8") as f:
+                json.dump(purchase_data, f, ensure_ascii=False, indent=2)
+
+        # 添加损毁标记（同时保存 name 和 cd_key）
+        damaged_entry = {
+            "name": name,
+            "cd_key": cd_key,
+            "marked_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "reason": "用户手动标记"
+        }
+        damaged_items.append(damaged_entry)
+
+        # 保存损毁列表
+        with open(damaged_file, "w", encoding="utf-8") as f:
+            json.dump(damaged_items, f, ensure_ascii=False, indent=2)
+
+        return {
+            "success": True,
+            "message": f"已将 {name} 标记为损毁（成本：¥{found_item.get('cost', 0) if found_item else 0}）"
+        }
+
+    except Exception as e:
+        import logging
+        import traceback
+        error_msg = f"🚨 [标记损毁] 异常：{e}\n{traceback.format_exc()}"
+        logging.getLogger("Sentinel").error(error_msg)
+
+        return {
+            "success": False,
+            "message": f"标记失败：{str(e)}"
         }
 
 # --- 5. 财务自动化闹钟 ---

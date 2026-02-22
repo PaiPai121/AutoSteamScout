@@ -12,10 +12,15 @@
 import asyncio
 import re
 import logging
+import json
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Tuple, List, Dict, Any
 from datetime import datetime
+
+# 导入配置文件
+import config
 
 # 确保能找到项目根目录的模块
 import sys
@@ -37,6 +42,7 @@ class ListingStatus(Enum):
     SKIPPED_LOSS = "skipped_loss"    # 跳过：会亏本
     SKIPPED_NO_MARKET = "skipped_no_market"     # 跳过：SteamPy 无市场数据
     SKIPPED_ALREADY_LISTED = "skipped_already_listed"  # 跳过：已在售
+    MARKED_AS_DAMAGED = "marked_as_damaged"  # 🚫 标记为损毁：仅核算成本，禁售
     ERROR = "error"                  # 异常错误
 
 
@@ -104,6 +110,56 @@ class AutoLister:
 
         # 日志记录器
         self.logger = logging.getLogger("AutoLister")
+
+    def is_damaged(self, cd_key: str) -> bool:
+        """
+        🚫 检查 CDKey 是否在损毁黑名单中
+
+        Args:
+            cd_key: 激活码
+
+        Returns:
+            bool: 是否已损毁
+        """
+        damaged_file = "data/damaged_items.json"
+        if not os.path.exists(damaged_file):
+            return False
+
+        try:
+            with open(damaged_file, "r", encoding="utf-8") as f:
+                damaged_items = json.load(f)
+
+            # 检查 CDKey 是否在损毁列表中
+            cd_key_upper = cd_key.strip().upper()
+            for item in damaged_items:
+                # 可能通过 name 或 cd_key 标记
+                if item.get("cd_key", "").strip().upper() == cd_key_upper:
+                    return True
+                # 也检查 name（如果没有 cd_key）
+                if item.get("name") and item.get("name") == self._get_name_by_cdkey(cd_key):
+                    return True
+
+            return False
+        except:
+            return False
+
+    def _get_name_by_cdkey(self, cd_key: str) -> Optional[str]:
+        """根据 CDKey 获取商品名称（用于损毁检查）"""
+        ledger_file = "data/purchase_ledger.json"
+        if not os.path.exists(ledger_file):
+            return None
+
+        try:
+            with open(ledger_file, "r", encoding="utf-8") as f:
+                purchase_data = json.load(f)
+
+            cd_key_upper = cd_key.strip().upper()
+            for item in purchase_data:
+                if item.get("cd_key", "").strip().upper() == cd_key_upper:
+                    return item.get("name")
+            return None
+        except:
+            return None
     
     async def query_market_price(self, game_name: str) -> Optional[MarketData]:
         """
@@ -331,6 +387,19 @@ class AutoLister:
                         message=f"该商品已在售，跳过上架"
                     )
 
+            # 🚫 [政治审查] 检查是否已标记为损毁（推荐方案）
+            print(f"🚫 [审查] 检查是否已标记为损毁...")
+            if self.is_damaged(cd_key):
+                print(f"   🚫 该商品已标记为损毁，严禁上架")
+                self.logger.warning(f"🚫 [损毁拦截] {purchase_name} 已标记为损毁，严禁上架。")
+                return ListingResult(
+                    status=ListingStatus.MARKED_AS_DAMAGED,
+                    purchase_name=purchase_name,
+                    purchase_cost=purchase_cost,
+                    cd_key=cd_key,
+                    message="该项已标记为损毁，成本已计入财务报表，严禁上架。"
+                )
+
             # Step 1: 查询 SteamPy 市场价格
             market_data = await self.query_market_price(purchase_name)
 
@@ -444,6 +513,7 @@ class AutoLister:
         print(f"\n{'='*80}")
         print(f"="*80)
         print(f"📦 [批量上架] 开始处理 {len(missing_items)} 个待售商品")
+        print(f"⚠️  [警告] 此过程将占用浏览器，巡航任务将等待...")
         print(f"="*80)
         print(f"{'='*80}\n")
 
@@ -475,6 +545,11 @@ class AutoLister:
 
         # 发送汇总报告
         await self._send_summary_report(results)
+
+        print(f"\n{'='*80}")
+        print(f"✅ [批量上架] 完成！共处理 {len(results)} 个商品")
+        print(f"🔓 浏览器已释放，巡航任务可继续")
+        print(f"{'='*80}\n")
 
         return results
     
