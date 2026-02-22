@@ -25,6 +25,13 @@ AUDIT_CONFIG = {
     "ROI_THRESHOLD": 0.05,       # ROI 关注阈值 (5%)
 }
 
+# --- 🚀 自动上架配置 ---
+AUTO_LISTER_CONFIG = {
+    "UNDERCUT_AMOUNT": 0.05,     # 比市场最低价低多少元
+    "MIN_PROFIT_MARGIN": 0.10,   # 最低利润要求 (元)
+    "MIN_ROI": 0.05,             # 最低 ROI 要求 (5%)
+}
+
 # --- 爬虫与性能设置 ---
 SCOUT_CONFIG = {
     "SLEEP_INTERVAL": 1.0,       # 巡航项之间的间隔 (秒)

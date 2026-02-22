@@ -554,6 +554,108 @@ async def get_audit_stats(token: str = Depends(verify_token)):
             }
         }
 
+# 🆕 一键上架 API 接口（需要认证）
+@app.post("/api/auto_list")
+async def auto_list_missing(request: Request, token: str = Depends(verify_token)):
+    """
+    一键上架待售商品
+
+    从财务审计数据中获取"待售"商品，自动查询 SteamPy 市场价格，
+    以略低于市场的价格自动上架，并发送飞书通知。
+    """
+    global global_commander
+
+    if not global_commander:
+        return {
+            "success": False,
+            "message": "系统尚未初始化，请稍后再试"
+        }
+
+    try:
+        # 获取待售商品列表
+        data = await request.json() if await request.body() else {}
+        use_ai_name = data.get("use_ai_name", True)  # 是否使用 AI 匹配的游戏名
+
+        # 从财务审计数据中获取"待售"商品（遗珠）
+        from Finance_Center.auditor import FinanceAuditor
+        audit_result = await FinanceAuditor().run_detailed_audit()
+
+        # 提取待售商品（tag == "遗珠" 的项）
+        missing_items = []
+        for item in audit_result.get("details", {}).get("trace_details", []):
+            if item.get("tag") == "遗珠":
+                # 需要从采购账本中获取完整的 cd_key 和 cost
+                missing_items.append({
+                    "name": item.get("source_name"),
+                    "cd_key": item.get("cd_key", ""),  # 需要从原始数据中获取
+                    "cost": item.get("cost", 0)
+                })
+
+        # 💡 更准确的方式：直接从 purchase_ledger.json 中读取未上架的 Key
+        import json
+        import os
+        ledger_file = "data/purchase_ledger.json"
+        sales_file = "data/steampy_sales.json"
+
+        # 加载采购数据
+        purchase_data = []
+        if os.path.exists(ledger_file):
+            with open(ledger_file, "r", encoding="utf-8") as f:
+                purchase_data = json.load(f)
+
+        # 加载销售数据（用于排除已上架的）
+        sales_data = []
+        if os.path.exists(sales_file):
+            with open(sales_file, "r", encoding="utf-8") as f:
+                sales_data = json.load(f)
+
+        # 建立销售端 Key 索引
+        sales_keys = {s.get("cd_key", "").strip().upper() for s in sales_data}
+
+        # 筛选未上架的商品
+        missing_items = []
+        for p in purchase_data:
+            p_key = p.get("cd_key", "").strip().upper()
+            # 排除：已上架的、退款的、黑名单的
+            if p_key in sales_keys:
+                continue
+            if "退款" in p.get("status", "") or "REFUN" in p_key:
+                continue
+            if p.get("cd_key") and len(p.get("cd_key", "")) > 5:
+                missing_items.append({
+                    "name": p.get("name"),
+                    "cd_key": p.get("cd_key"),
+                    "cost": float(p.get("cost", 0))
+                })
+
+        if not missing_items:
+            return {
+                "success": True,
+                "message": "没有待上架商品",
+                "total": 0
+            }
+
+        # 调用 Commander 的自动上架方法
+        async with global_commander.lock:
+            result = await global_commander.auto_list_missing_items(missing_items)
+
+        return result
+
+    except Exception as e:
+        import logging
+        import traceback
+        error_msg = f"🚨 [一键上架] 异常：{e}\n{traceback.format_exc()}"
+        logging.getLogger("Sentinel").error(error_msg)
+
+        # 发送飞书错误通知
+        if global_commander and global_commander.notifier:
+            await global_commander.notifier.send_text(f"🚨 [一键上架] 任务失败：{str(e)[:200]}")
+
+        return {
+            "success": False,
+            "message": f"上架失败：{str(e)}"
+        }
+
 # --- 5. 财务自动化闹钟 ---
 async def audit_watchdog():
     """⏲️ 每小时自动捅一次审计接口，确保报表刷新"""

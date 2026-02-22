@@ -29,6 +29,7 @@ from SteamPY_Scout.steampy_hunter import SteamPyMonitor
 from feishu_notifier import FeishuNotifier
 from ai_engine import ArbitrageAI
 from game_rating.rating_manager import GameRatingManager
+from auto_lister import AutoLister, ListingStatus  # 🆕 自动上架引擎
 
 def get_search_query(raw_name):
     # 1. 剔除噪音词
@@ -63,6 +64,7 @@ class ArbitrageCommander:
         }
         self.finance = None
         self.steampy_center = None
+        self.auto_lister = None  # 🆕 自动上架引擎
 
     async def init_all(self):
         self.status["state"] = "INITIALIZING"
@@ -79,6 +81,8 @@ class ArbitrageCommander:
                 self.finance = FinanceService(self.sonkwo.context)
             if not self.steampy_center:
                 self.steampy_center = SteamPyService(self.steampy.context)
+            if not self.auto_lister:
+                self.auto_lister = AutoLister(steampy_monitor=self.steampy, notifier=self.notifier)
             print("✅ 所有系统组件启动成功，进入待命状态。")
             self.status["state"] = "RUNNING"
             return True
@@ -354,6 +358,53 @@ class ArbitrageCommander:
         except Exception as e:
             print(f"⚠️ 巡航任务发生局部异常: {e}")
             
+
+    # 🆕 一键上架待售商品
+    async def auto_list_missing_items(self, missing_items: list) -> dict:
+        """
+        一键上架待售商品（从财务审计接口调用）
+        
+        Args:
+            missing_items: 待售商品列表，每项包含：
+                - name: 游戏名
+                - cd_key: 激活码
+                - cost: 采购成本
+                
+        Returns:
+            汇总报告字典
+        """
+        if not self.auto_lister:
+            return {"success": False, "message": "自动上架引擎尚未初始化"}
+        
+        if not missing_items:
+            return {"success": True, "message": "没有待上架商品", "results": []}
+
+        print(f"\n🚀 [一键上架] 开始处理 {len(missing_items)} 个待售商品")
+        
+        # 调用自动上架引擎
+        results = await self.auto_lister.list_missing_items(missing_items)
+        
+        # 生成汇总报告
+        summary = {
+            "success": True,
+            "total": len(results),
+            "success_count": sum(1 for r in results if r.status.value == "success"),
+            "failed_count": sum(1 for r in results if r.status.value == "failed"),
+            "skipped_count": sum(1 for r in results if "skipped" in r.status.value),
+            "results": [
+                {
+                    "name": r.purchase_name,
+                    "status": r.status.value,
+                    "message": r.message,
+                    "listing_price": r.listing_price,
+                    "profit": r.profit
+                }
+                for r in results
+            ]
+        }
+        
+        return summary
+
 async def start_cruise_with_watchdog(commander, target_keyword):
     retry_count = 0
     while True:

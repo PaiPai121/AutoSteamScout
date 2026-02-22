@@ -22,7 +22,12 @@
                     <p class="text-gray-500 text-sm mt-1" id="update_time">正在连接母舰数据库...</p>
                 </div>
             </div>
-            <button onclick="location.reload()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded text-sm transition">🔄 刷新数据</button>
+            <div class="flex gap-3">
+                <button onclick="autoListMissing()" id="auto_list_btn" class="bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded text-sm transition flex items-center gap-2">
+                    🚀 一键上架
+                </button>
+                <button onclick="location.reload()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded text-sm transition">🔄 刷新数据</button>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -74,7 +79,10 @@
             </div>
 
             <div class="glass-card p-6">
-                <h3 class="text-lg font-bold mb-4 text-yellow-400">🟡 待售商品 (未上架)</h3>
+                <h3 class="text-lg font-bold mb-4 text-yellow-400 flex items-center justify-between">
+                    <span>🟡 待售商品 (未上架)</span>
+                    <span id="missing_count" class="text-xs bg-yellow-900/50 px-2 py-1 rounded">0 个</span>
+                </h3>
                 <div id="missing_body" class="space-y-3"></div>
             </div>
         </div>
@@ -181,8 +189,15 @@
 
             // 渲染待售商品
             const missingBody = document.getElementById('missing_body');
-            missingBody.innerHTML = d.details.missing_from_steampy.map(name => `
-                <div class="p-3 bg-yellow-900/10 border border-yellow-900/20 rounded text-sm text-yellow-200">🟡 ${name}</div>
+            const missingList = d.details.missing_from_steampy || [];
+
+            // 更新待售商品计数
+            document.getElementById('missing_count').innerText = `${missingList.length} 个`;
+
+            missingBody.innerHTML = missingList.map(name => `
+                <div class="p-3 bg-yellow-900/10 border border-yellow-900/20 rounded text-sm text-yellow-200 flex items-center justify-between">
+                    <span>🟡 ${name}</span>
+                </div>
             `).join('') || '<div class="text-green-500 text-sm italic">✨ 仓库已清空，全部商品已在售</div>';
 
             // 🚀 渲染全息资产溯源清单（交易明细）
@@ -237,6 +252,78 @@
 
         } catch (e) {
             console.warn("📡 信号干扰中，正在维持当前全息投影...");
+        }
+    }
+
+    // 🚀 一键上架功能
+    let autoListInProgress = false;
+
+    async function autoListMissing() {
+        if (autoListInProgress) {
+            alert("⏳ 上架任务正在进行中，请稍候...");
+            return;
+        }
+
+        const missingCount = parseInt(document.getElementById('missing_count').innerText) || 0;
+        if (missingCount === 0) {
+            alert("✨ 没有待上架商品");
+            return;
+        }
+
+        const confirmMsg = `🚀 准备上架 ${missingCount} 个待售商品\n\n系统将：\n1. 查询 SteamPy 市场价格\n2. 以略低于市场的价格自动上架\n3. 发送飞书通知\n\n⚠️ 注意：利润不足或会亏本的商品将自动跳过\n\n确认继续？`;
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+
+        const btn = document.getElementById('auto_list_btn');
+        const originalText = btn.innerHTML;
+
+        try {
+            autoListInProgress = true;
+            btn.disabled = true;
+            btn.innerHTML = "⏳ 上架中...";
+            btn.classList.add('opacity-50');
+
+            const headers = API_TOKEN ? { 'Authorization': `Bearer ${API_TOKEN}` } : {};
+
+            const res = await fetch('/api/auto_list', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...headers
+                },
+                body: JSON.stringify({})
+            });
+
+            const result = await res.json();
+
+            if (result.success) {
+                const summary = `
+✅ 上架完成！
+
+📊 汇总报告：
+├─ 总处理：${result.total || 0} 个
+├─ 成功上架：${result.success_count || 0} 个
+├─ 上架失败：${result.failed_count || 0} 个
+└─ 自动跳过：${result.skipped_count || 0} 个
+
+💡 请查看飞书通知获取详细信息
+                `.trim();
+                alert(summary);
+
+                // 自动刷新页面
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                alert(`❌ 上架失败：${result.message || '未知错误'}`);
+            }
+        } catch (e) {
+            console.error("自动上架异常:", e);
+            alert(`❌ 请求失败：${e.message}`);
+        } finally {
+            autoListInProgress = false;
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            btn.classList.remove('opacity-50');
         }
     }
 
