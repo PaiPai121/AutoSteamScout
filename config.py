@@ -15,7 +15,7 @@ SINGLE_PROCESS_MODE = True    # 强制 Chromium 单进程（节省内存神器�
 PAYOUT_RATE = 0.97
 
 # 专门用于控制后台定时触发 get_audit_stats 的频率
-RECON_INTERVAL = 3600
+RECON_INTERVAL = 3600 * 6
 
 # --- 审计与熔断阈值 ---
 AUDIT_CONFIG = {
