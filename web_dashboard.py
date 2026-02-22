@@ -322,7 +322,8 @@ async def continuous_cruise():
                     await asyncio.sleep(30)
                     continue # 跳过本次循环，不重启引擎
                 search_tasks = config.SCOUT_CONFIG["SEARCH_TASKS"]
-                target_modes = ["lowest", "new_lowest"]
+                # 🚀 DEBUG 模式下节省时间
+                target_modes = [] if config.DEBUG_MODE else ["lowest", "new_lowest"]
                 # 💡 设置扫描深度：每类扫 3 页（大约覆盖 1000+ 商品）
                 max_pages = config.SCOUT_CONFIG["MAX_PAGES_PER_TASK"]
                 for mode in target_modes: # 🚀 第一层：切换 史低/超史低
@@ -666,7 +667,10 @@ async def list_single_item(request: Request, token: str = Depends(verify_token))
         name = data.get("name", "")
         cost = float(data.get("cost", 0))
 
+        print(f"🚀 [单个上架] 收到请求：uid={uid}, name={name}, cost={cost}")
+
         if not uid:
+            print(f"⚠️ [单个上架] 缺少 uid 参数")
             return {
                 "success": False,
                 "message": "缺少必要参数：商品 ID"
@@ -683,11 +687,10 @@ async def list_single_item(request: Request, token: str = Depends(verify_token))
             with open(ledger_file, "r", encoding="utf-8") as f:
                 purchase_data = json.load(f)
 
-            # 精确匹配 uid
-            for item in purchase_data:
-                # uid 格式：SK_{order_id}_{idx}
-                item_uid = f"SK_{item.get('order_id', 'unknown')}_{purchase_data.index(item)}"
-                if item_uid == uid or item.get('cd_key') == uid:
+            # 精确匹配 uid (使用 enumerate 获取正确索引)
+            for idx, item in enumerate(purchase_data):
+                item_uid = f"SK_{item.get('order_id', 'unknown')}_{idx}"
+                if item_uid == uid:
                     if item.get("cd_key") and not item.get("damaged"):
                         cd_key = item.get("cd_key")
                         found_item = item
@@ -705,7 +708,7 @@ async def list_single_item(request: Request, token: str = Depends(verify_token))
         if not cd_key:
             return {
                 "success": False,
-                "message": f"未找到商品 (ID: {uid}) 的 CDKey，请检查采购账本"
+                "message": f"未找到商品 (ID: {uid}, 名称：{name}) 的 CDKey，请检查采购账本"
             }
 
         # 检查是否已上架
@@ -814,8 +817,16 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
         # 加载损毁列表
         damaged_items = []
         if os.path.exists(damaged_file):
-            with open(damaged_file, "r", encoding="utf-8") as f:
-                damaged_items = json.load(f)
+            try:
+                with open(damaged_file, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    if content:  # 文件不为空
+                        damaged_items = json.loads(content)
+                    # 如果文件为空，使用空列表
+            except json.JSONDecodeError:
+                # 如果解析失败，使用空列表
+                damaged_items = []
+                print(f"⚠️ [损毁标记] 损毁列表解析失败，使用空列表")
 
         # 添加损毁标记（同时保存 name 和 cd_key）
         damaged_entry = {
