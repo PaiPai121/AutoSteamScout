@@ -687,9 +687,9 @@ async def list_single_item(request: Request, token: str = Depends(verify_token))
             with open(ledger_file, "r", encoding="utf-8") as f:
                 purchase_data = json.load(f)
 
-            # 精确匹配 uid (使用 enumerate 获取正确索引)
-            for idx, item in enumerate(purchase_data):
-                item_uid = f"SK_{item.get('order_id', 'unknown')}_{idx}"
+            # 精确匹配 uid (直接使用账本中的 uid 字段)
+            for item in purchase_data:
+                item_uid = item.get("uid", "")
                 if item_uid == uid:
                     if item.get("cd_key") and not item.get("damaged"):
                         cd_key = item.get("cd_key")
@@ -791,10 +791,10 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
             with open(ledger_file, "r", encoding="utf-8") as f:
                 purchase_data = json.load(f)
 
-            # 优先匹配 uid
+            # 优先匹配 uid (直接使用账本中的 uid 字段)
             if uid:
-                for idx, item in enumerate(purchase_data):
-                    item_uid = f"SK_{item.get('order_id', 'unknown')}_{idx}"
+                for item in purchase_data:
+                    item_uid = item.get("uid", "")
                     if item_uid == uid:
                         found_item = item
                         cd_key = item.get("cd_key", "")
