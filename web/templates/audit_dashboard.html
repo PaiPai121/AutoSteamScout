@@ -26,7 +26,7 @@
                 <button onclick="autoListMissing()" id="auto_list_btn" class="bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded text-sm transition flex items-center gap-2">
                     🚀 一键上架
                 </button>
-                <button onclick="location.reload()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded text-sm transition">🔄 刷新数据</button>
+                <button onclick="refreshAuditData()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded text-sm transition">🔄 刷新数据</button>
             </div>
         </div>
 
@@ -143,13 +143,13 @@
             if (!res.ok) throw new Error("网络响应异常");
             const d = await res.json();
 
-            // 💡 核心保护 1：如果后端返回的时间戳没变，直接切断后续逻辑，网页动都不动一下
+            // 💡 核心保护：如果后端返回的时间戳没变，直接切断后续逻辑，网页动都不动一下
             if (lastUpdateAt === d.update_at) {
                 console.log("🧊 账本未变动，保持静默...");
                 return;
             }
 
-            // 💡 核心保护 2：只有时间戳变了（说明后台算完新账了），才开始"贴纸"更新
+            // 💡 只有时间戳变了（说明后台算完新账了），才开始"贴纸"更新
             console.log(`🚀 侦测到新账本 [${d.update_at}]，正在更新视图...`);
             lastUpdateAt = d.update_at;
 
@@ -463,11 +463,67 @@
         }
     }
 
+    // 📊 数据更新时间戳（用于检测数据是否更新）
+    let lastUpdateAt = "";
+
+    // 🚀 刷新数据函数（手动/自动共用）
+    async function refreshAuditData(showLoading = true) {
+        try {
+            const headers = API_TOKEN ? { 'Authorization': `Bearer ${API_TOKEN}` } : {};
+
+            // 显示加载状态（仅手动刷新时显示）
+            if (showLoading) {
+                const refreshBtn = document.querySelector('button[onclick="refreshAuditData()"]');
+                if (refreshBtn) {
+                    const originalText = refreshBtn.innerHTML;
+                    refreshBtn.disabled = true;
+                    refreshBtn.innerHTML = "⏳ 刷新中...";
+
+                    setTimeout(() => {
+                        refreshBtn.disabled = false;
+                        refreshBtn.innerHTML = "🔄 刷新数据";
+                    }, 3000);
+                }
+            }
+
+            const res = await fetch('/api/audit_stats', { headers });
+
+            if (res.status === 401) {
+                // Token 失效，刷新页面重新认证
+                location.reload();
+                return;
+            }
+
+            if (!res.ok) throw new Error("网络响应异常");
+            const d = await res.json();
+
+            // 🛡️ 检测数据是否更新
+            if (d.update_at === lastUpdateAt) {
+                console.log("✅ 数据未更新，跳过刷新");
+                return;
+            }
+
+            console.log(`🚀 检测到新数据 [${d.update_at}]，刷新页面...`);
+            lastUpdateAt = d.update_at;
+
+            // 数据有更新，刷新页面
+            location.reload();
+
+        } catch (e) {
+            console.warn("📡 刷新失败:", e);
+        }
+    }
+
     // 🚀 初始化母舰控制台
     window.onload = () => {
-        loadAudit(); // 进页面先抓一次
-        // 缩短探测频率至 15 秒也没关系，因为这种方式不刷页面，完全无感
-        setInterval(loadAudit, 15000000);
+        // 进页面先加载一次数据（不刷新页面，只更新内容）
+        loadAudit();
+
+        // ⏰ 定时刷新：每 6 小时检查一次数据更新
+        // 6 小时 = 6 * 60 * 60 * 1000 = 21600000ms
+        setInterval(() => refreshAuditData(false), 21600000);
+
+        console.log("📊 审计看板已启动，每 6 小时自动检查数据更新");
     };
     </script>
 </body>

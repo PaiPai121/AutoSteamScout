@@ -17,63 +17,14 @@
             </h2>
         </div>
         <div class="mission-grid">
-            <button id="syncBtn" class="btn-sync" onclick="triggerSync()">
-                🔄 一键全平台资产同步
-            </button>
-            <div class="mission-item">📍 当前任务: <span id="current-mission-text" class="text-white">{{ current_mission }}</span></div>
-            <div class="mission-item">📊 巡航统计: <span id="scanned-count-text" class="text-white">第 {{ scanned_count }} 次扫描</span></div>
+            <div class="mission-item">📍 当前任务：<span id="current-mission-text" class="text-white">{{ current_mission }}</span></div>
+            <div class="mission-item">📊 巡航统计：<span id="scanned-count-text" class="text-white">第 {{ scanned_count }} 次扫描</span></div>
         </div>
     </div>
-
-    <div class="panel">
-        <h3>🔍 深度侦察模式 (单点点杀)</h3>
-        <div class="search-box">
-            <input type="text" id="gameInput" placeholder="输入游戏关键词，母舰将实时同步调取 SteamPy 前五名报价并运行 AI 审计...">
-            <button class="btn-gold" onclick="checkProfit()">开始侦察</button>
-        </div>
-        <pre id="resultArea"></pre>
-    </div>
-
-    <div class="panel panel-blue">
-        <h3 class="text-blue">🛠️ 快速挂载中心 (Manual Post)</h3>
-        <div class="post-grid">
-            <input type="text" id="postGame" placeholder="游戏全称">
-            <input type="text" id="postKey" placeholder="粘贴 CDKEY">
-            <input type="text" id="postPrice" placeholder="价格(元)">
-            <button class="btn-blue" onclick="submitPost()">立即上架</button>
-        </div>
-        <div id="postStatus" class="status-console"></div>
-    </div>
-
-    <div class="panel no-padding">
-        <table>
-            <thead>
-                <tr>
-                    <th class="w-80">时间</th>
-                    <th>游戏实体</th>
-                    <th class="w-90">成本</th>
-                    <th>SteamPy (Top5)</th>
-                    <th class="w-140">预期利润</th>
-                    <th>AI 审计结论</th>
-                    <th class="w-70">操作</th>
-                </tr>
-            </thead>
-            <tbody id="history-table-body">
-                <tr>
-                    <td colspan="7" style="text-align:center; padding:50px; color:#8b949e;">
-                        📡 正在连接母舰全息链路，调取实时战报...
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    <script>
-        // 1. 优先注入核心配置
-        window.SENTINEL_CONFIG = {
-            radar_interval: (parseInt("{{ refresh_interval }}") || 5) * 1000
-        };
-        console.log("🛰️ [CONFIG] 母舰参数已注入:", window.SENTINEL_CONFIG);
-    </script>
-    <script src="/static/js/commander.js?v={{ css_version }}"></script>
-</body>
-</html>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SENTINEL V2 | 战略指挥中心</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}?v={{ css_version }}">
+</head>
