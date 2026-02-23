@@ -124,6 +124,15 @@ class SteamPyMonitor(SteamPyScout):
 
         except Exception as e:
             print(f"🚨 导航异常终止: {e}")
+            # 🛡️ 最后尝试：直接跳转到正确的卖家中心 URL
+            try:
+                print("🔄 尝试直接跳转到卖家中心...")
+                await self.page.goto("https://steampy.com/pyUserInfo/sellerCDKey", wait_until="commit", timeout=20000)
+                await asyncio.sleep(3.0)
+                print("✅ 强制跳转成功。")
+            except Exception as final_e:
+                print(f"❌ 所有尝试均失败：{final_e}")
+
 
     async def action_search(self, name):
         """
