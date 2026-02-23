@@ -330,7 +330,10 @@
             if (result.success) {
                 let statusMsg = "";
                 if (result.status === "success") {
-                    statusMsg = `✅ 上架成功！\n\n📊 上架信息：\n├─ 价格：¥${result.listing_price}\n├─ 预期利润：¥${result.profit}\n└─ 匹配名：${result.market_name}`;
+                    statusMsg = `✅ 上架成功！\n\n📊 上架信息：\n├─ 价格：¥${result.listing_price}\n├─ 预期利润：¥${result.profit}\n└─ 匹配名：${result.market_name}\n\n⏳ 数据已自动同步，正在刷新页面...`;
+                    // 上架成功，自动刷新页面
+                    setTimeout(() => location.reload(), 1500);
+                    return;  // 直接返回，不显示 alert
                 } else if (result.status.includes("skipped")) {
                     statusMsg = `⏭️ 已跳过\n\n📝 原因：${result.message}`;
                 } else {
@@ -338,7 +341,7 @@
                 }
                 alert(statusMsg);
 
-                // 刷新页面
+                // 非成功状态也刷新页面（数据可能有变化）
                 setTimeout(() => location.reload(), 1000);
             } else {
                 alert(`❌ 上架失败：${result.message}`);

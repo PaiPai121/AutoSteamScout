@@ -254,25 +254,26 @@ class AutoLister:
         # 计算预期利润
         expected_profit = round(expected_revenue - purchase_cost, 2)
 
-        # 计算 ROI
+        # 计算 ROI（百分比形式，如 12.92 表示 12.92%）
         roi = round((expected_profit / purchase_cost) * 100, 2) if purchase_cost > 0 else 0
 
         # 判定是否有利可图
+        # MIN_ROI 是 0.05，表示 5%，需要乘以 100 变成 5.0 来和 roi 比较
         is_profitable = (
             expected_profit >= self.MIN_PROFIT_MARGIN and
-            roi >= self.MIN_ROI
+            roi >= self.MIN_ROI * 100  # 0.05 * 100 = 5.0%
         )
 
         print(f"   上架价格：¥{target_price:.2f}")
         print(f"   预期收入：¥{expected_revenue:.2f} (扣除 3% 手续费)")
         print(f"   预期利润：¥{expected_profit:.2f}")
-        print(f"   ROI: {roi*100:.1f}%")
+        print(f"   ROI: {roi:.1f}%")
         print(f"   最低利润要求：¥{self.MIN_PROFIT_MARGIN}")
-        print(f"   最低 ROI 要求：{self.MIN_ROI*100:.1f}%")
+        print(f"   最低 ROI 要求：{self.MIN_ROI * 100:.1f}%")
 
         # 生成决策理由
         if is_profitable:
-            reason = f"定价 ¥{target_price:.2f}，预计利润 ¥{expected_profit:.2f} (ROI: {roi*100:.1f}%)"
+            reason = f"定价 ¥{target_price:.2f}，预计利润 ¥{expected_profit:.2f} (ROI: {roi:.1f}%)"
             print(f"   ✅ 利润校验通过")
         else:
             if expected_profit < 0:
@@ -353,6 +354,10 @@ class AutoLister:
                 print(f"✅ [执行上架] 成功：{message}")
                 print(f"   ✅ 上架成功")
                 print(f"   消息：{message}")
+
+                # 🚀 [关键优化] 上架成功后立即写入 steampy_sales.json，避免重新爬取
+                print(f"\n💾 [数据同步] 正在更新 steampy_sales.json...")
+                await self._sync_to_steampy_sales(game_name, cd_key, price)
             else:
                 self.logger.warning(f"⚠️ [执行上架] 失败：{message}")
                 print(f"   ❌ 上架失败")
@@ -368,6 +373,59 @@ class AutoLister:
             print(f"   🚨 上架异常：{e}")
             print(f"{'='*60}\n")
             return False, error_msg
+
+    async def _sync_to_steampy_sales(self, game_name: str, cd_key: str, price: float):
+        """
+        🚀 上架成功后立即同步到 steampy_sales.json
+
+        Args:
+            game_name: 游戏名称
+            cd_key: 激活码
+            price: 上架价格
+        """
+        import json
+        import os
+        from datetime import datetime
+
+        sales_file = "data/steampy_sales.json"
+
+        # 加载现有数据
+        sales_data = []
+        if os.path.exists(sales_file):
+            try:
+                with open(sales_file, "r", encoding="utf-8") as f:
+                    sales_data = json.load(f)
+            except:
+                sales_data = []
+
+        # 创建新条目
+        now = datetime.now()
+        new_entry = {
+            "order_id": f"SPY_{now.strftime('%Y%m%d%H%M%S')}",
+            "name": game_name,
+            "price": price,
+            "cd_key": cd_key,
+            "status": "未出库",  # 刚上架，还未卖出
+            "order_tag": "STOCK",  # 库存状态
+            "order_time": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "sync_at": now.strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        # 检查是否已存在（避免重复添加）
+        cd_key_upper = cd_key.strip().upper()
+        exists = any(item.get("cd_key", "").strip().upper() == cd_key_upper for item in sales_data)
+
+        if not exists:
+            sales_data.append(new_entry)
+
+            # 保存数据
+            with open(sales_file, "w", encoding="utf-8") as f:
+                json.dump(sales_data, f, ensure_ascii=False, indent=2)
+
+            print(f"   ✅ 已同步到 steampy_sales.json")
+            print(f"   📝 游戏：{game_name} | 价格：¥{price} | 状态：未出库")
+        else:
+            print(f"   ⚠️ 该商品已在 steampy_sales.json 中，跳过同步")
     
     async def list_single_item(
         self,
