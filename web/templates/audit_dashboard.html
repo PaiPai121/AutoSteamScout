@@ -503,17 +503,23 @@
             // 🛡️ 检测数据是否更新
             if (d.update_at === lastUpdateAt) {
                 console.log("✅ 数据未更新，跳过刷新");
+                if (showLoading) {
+                    alert("✅ 数据已是最新，无需刷新");
+                }
                 return;
             }
 
-            console.log(`🚀 检测到新数据 [${d.update_at}]，刷新页面...`);
+            console.log(`🚀 检测到新数据 [${d.update_at}]，正在更新视图...`);
             lastUpdateAt = d.update_at;
 
-            // 数据有更新，刷新页面
-            location.reload();
+            // ✅ 调用 loadAudit() 进行无感更新，而不是直接刷新页面
+            await loadAudit();
 
         } catch (e) {
             console.warn("📡 刷新失败:", e);
+            if (showLoading) {
+                alert("❌ 刷新失败：" + e.message);
+            }
         }
     }
 
