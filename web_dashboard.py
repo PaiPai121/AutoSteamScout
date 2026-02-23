@@ -836,8 +836,11 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
             "marked_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "reason": "用户手动标记"
         }
+        # damaged_items.append(damaged_entry)
+        for item in damaged_items:
+            if uid and item.get("uid") == uid:
+                return {"success": True, "message": "已经是损毁状态"}
         damaged_items.append(damaged_entry)
-
         # 保存损毁列表
         with open(damaged_file, "w", encoding="utf-8") as f:
             json.dump(damaged_items, f, ensure_ascii=False, indent=2)
@@ -853,7 +856,7 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
                 f"🎮 游戏名称：{found_item.get('name') if found_item else name}\n"
                 f"💰 采购成本：¥{found_item.get('cost', 0) if found_item else 0}\n"
                 f"🔑 CDKey: {cd_key_display}\n"
-                f"⏰ 标记时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"⏰ 标记时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                 f"{'─'*50}\n"
                 f"📌 处理结果：\n"
                 f"├─ 已从待售列表中移除\n"

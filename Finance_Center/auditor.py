@@ -368,7 +368,7 @@ class FinanceAuditor:
         missing_from_trace = [
             t['source_name']
             for t in trace_details
-            if t['tag'] == '遗珠'
+            if t['tag'] == '遗珠' and not t.get('damaged', False)  # 🚀 排除损毁商品   
         ]
 
         return {

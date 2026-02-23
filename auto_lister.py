@@ -172,7 +172,7 @@ class AutoLister:
             MarketData 对象，如果查询失败返回 None
         """
         try:
-            self.logger.info(f"🔍 [市场价格查询] 目标：{game_name}")
+            print(f"🔍 [市场价格查询] 目标：{game_name}")
             print(f"\n{'='*60}")
             print(f"🔍 [Step 1] 查询 SteamPy 市场价格")
             print(f"   游戏名称：{game_name}")
@@ -198,7 +198,7 @@ class AutoLister:
                 average_price=average_price
             )
 
-            self.logger.info(
+            print(
                 f"✅ [市场价格查询] 成功 | "
                 f"匹配名：{py_match_name} | "
                 f"最低价：¥{py_price} | "
@@ -314,7 +314,7 @@ class AutoLister:
             print(f"   游戏名称：{game_name}")
             print(f"   激活码：{cd_key[:5]}***{cd_key[-3:] if len(cd_key) > 5 else ''}")
             print(f"   上架价格：¥{price}")
-            self.logger.info(f"🚀 [执行上架] {game_name} | 价格：¥{price} | Key: {cd_key[:5]}***")
+            print(f"🚀 [执行上架] {game_name} | 价格：¥{price} | Key: {cd_key[:5]}***")
 
             # 调用 SteamPy 的上架接口
             # 构造 post 指令格式：游戏名|Key|价格
@@ -329,7 +329,7 @@ class AutoLister:
             )
 
             if success:
-                self.logger.info(f"✅ [执行上架] 成功：{message}")
+                print(f"✅ [执行上架] 成功：{message}")
                 print(f"   ✅ 上架成功")
                 print(f"   消息：{message}")
             else:
@@ -415,7 +415,7 @@ class AutoLister:
             # Step 2: 计算最优定价
             pricing = self.calculate_pricing(market_data, purchase_cost)
 
-            self.logger.info(
+            print(
                 f"📊 [定价决策] {purchase_name} | "
                 f"成本：¥{purchase_cost} | "
                 f"目标价：¥{pricing.target_price} | "
@@ -517,16 +517,16 @@ class AutoLister:
         print(f"="*80)
         print(f"{'='*80}\n")
 
-        self.logger.info(f"📦 [批量上架] 开始处理 {len(missing_items)} 个待售商品")
+        print(f"📦 [批量上架] 开始处理 {len(missing_items)} 个待售商品")
 
         for i, item in enumerate(missing_items, 1):
             print(f"\n{'='*80}")
             print(f"[{i}/{len(missing_items)}] 正在处理：{item.get('name', 'Unknown')}")
             print(f"{'='*80}\n")
 
-            self.logger.info(f"\n{'='*60}")
-            self.logger.info(f"[{i}/{len(missing_items)}] 正在处理：{item.get('name', 'Unknown')}")
-            self.logger.info(f"{'='*60}")
+            print(f"\n{'='*60}")
+            print(f"[{i}/{len(missing_items)}] 正在处理：{item.get('name', 'Unknown')}")
+            print(f"{'='*60}")
 
             result = await self.list_single_item(
                 purchase_name=item.get('name', 'Unknown'),
