@@ -245,14 +245,17 @@ class AutoLister:
             0.01  # 确保价格为正
         )
 
+        # 🚀 保留两位小数，避免浮点数精度问题
+        target_price = round(target_price, 2)
+
         # 计算预期收入 (扣除 3% 手续费)
-        expected_revenue = target_price * PAYOUT_RATE
+        expected_revenue = round(target_price * PAYOUT_RATE, 2)
 
         # 计算预期利润
-        expected_profit = expected_revenue - purchase_cost
+        expected_profit = round(expected_revenue - purchase_cost, 2)
 
         # 计算 ROI
-        roi = (expected_profit / purchase_cost) if purchase_cost > 0 else 0
+        roi = round((expected_profit / purchase_cost) * 100, 2) if purchase_cost > 0 else 0
 
         # 判定是否有利可图
         is_profitable = (
@@ -309,12 +312,15 @@ class AutoLister:
             (success, message) 元组
         """
         try:
+            # 🚀 确保价格保留两位小数
+            price = round(float(price), 2)
+
             print(f"\n{'='*60}")
             print(f"🚀 [Step 3] 执行上架操作")
             print(f"   游戏名称：{game_name}")
             print(f"   激活码：{cd_key[:5]}***{cd_key[-3:] if len(cd_key) > 5 else ''}")
-            print(f"   上架价格：¥{price}")
-            print(f"🚀 [执行上架] {game_name} | 价格：¥{price} | Key: {cd_key[:5]}***")
+            print(f"   上架价格：¥{price:.2f}")
+            self.logger.info(f"🚀 [执行上架] {game_name} | 价格：¥{price} | Key: {cd_key[:5]}***")
 
             # 调用 SteamPy 的上架接口
             # 构造 post 指令格式：游戏名|Key|价格
