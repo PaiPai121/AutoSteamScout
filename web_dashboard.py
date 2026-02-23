@@ -885,7 +885,7 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
 @app.post("/api/notify_refresh")
 async def notify_refresh(request: Request, token: str = Depends(verify_token)):
     """
-    手动刷新审计数据后发送飞书通知
+    手动刷新审计数据后发送飞书通知（包含增量信息）
     """
     global global_commander
 
@@ -895,23 +895,60 @@ async def notify_refresh(request: Request, token: str = Depends(verify_token)):
         total_investment = data.get("total_investment", 0)
         current_profit = data.get("current_profit", 0)
         expected_profit = data.get("expected_profit", 0)
+        realized_cash = data.get("realized_cash", 0)
 
         # 计算回本进度
-        recovery_rate = (data.get("realized_cash", 0) / total_investment * 100) if total_investment > 0 else 0
+        recovery_rate = (realized_cash / total_investment * 100) if total_investment > 0 else 0
+
+        # 🚀 获取增量信息（与上次刷新对比）
+        details = data.get("details", {})
+        new_purchases = details.get("new_purchases", [])  # 新增采购
+        new_listings = details.get("new_listings", [])    # 新增上架
+        new_sales = details.get("new_sales", [])          # 新卖出
+
+        # 构建通知内容
+        content = [
+            f"🔄 [审计数据刷新通知]",
+            f"{'═'*50}",
+            f"⏰ 刷新时间：{update_at}",
+            f"💰 采购总成本：¥{total_investment:.2f}",
+            f"✅ 已实现利润：¥{current_profit:.2f}",
+            f"📈 预期总利润：¥{expected_profit:.2f}",
+            f"📊 回本进度：{recovery_rate:.1f}%",
+        ]
+
+        # 添加增量信息
+        if new_purchases or new_listings or new_sales:
+            content.append(f"{'─'*50}")
+            content.append(f"🆕 本次更新内容：")
+
+            if new_purchases:
+                content.append(f"🛒 新增采购 ({len(new_purchases)}个):")
+                for item in new_purchases[:5]:  # 最多显示 5 个
+                    content.append(f"   • {item['name']} ¥{item['cost']}")
+                if len(new_purchases) > 5:
+                    content.append(f"   ... 还有{len(new_purchases)-5}个")
+
+            if new_listings:
+                content.append(f"🚀 新增上架 ({len(new_listings)}个):")
+                for item in new_listings[:5]:
+                    content.append(f"   • {item['name']} ¥{item['price']}")
+                if len(new_listings) > 5:
+                    content.append(f"   ... 还有{len(new_listings)-5}个")
+
+            if new_sales:
+                content.append(f"💰 新卖出 ({len(new_sales)}个):")
+                for item in new_sales[:5]:
+                    content.append(f"   • {item['name']} ¥{item['price']}")
+                if len(new_sales) > 5:
+                    content.append(f"   ... 还有{len(new_sales)-5}个")
+
+        content.append(f"{'═'*50}")
+        content.append(f"💡 数据已更新，请查看审计看板")
 
         # 发送飞书通知
         if global_commander and global_commander.notifier:
-            await global_commander.notifier.send_text(
-                f"🔄 [审计数据刷新通知]\n"
-                f"{'═'*50}\n"
-                f"⏰ 刷新时间：{update_at}\n"
-                f"💰 采购总成本：¥{total_investment:.2f}\n"
-                f"✅ 已实现利润：¥{current_profit:.2f}\n"
-                f"📈 预期总利润：¥{expected_profit:.2f}\n"
-                f"📊 回本进度：{recovery_rate:.1f}%\n"
-                f"{'═'*50}\n"
-                f"💡 数据已更新，请查看审计看板"
-            )
+            await global_commander.notifier.send_text("\n".join(content))
 
         return {"success": True, "message": "通知已发送"}
 

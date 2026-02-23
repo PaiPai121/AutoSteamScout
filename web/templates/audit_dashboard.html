@@ -469,6 +469,59 @@
     // 📊 数据更新时间戳（用于检测数据是否更新）
     let lastUpdateAt = "";
 
+    // 📊 上次的 trace_details（用于计算增量）
+    let lastTraceDetails = [];
+
+    // 🚀 计算增量信息
+    function calculateDelta(d) {
+        const currentDetails = d.details.trace_details || [];
+        const delta = {
+            new_purchases: [],  // 新增采购
+            new_listings: [],   // 新增上架
+            new_sales: []       // 新卖出
+        };
+
+        // 如果是第一次刷新，不计算增量
+        if (lastTraceDetails.length === 0) {
+            lastTraceDetails = currentDetails;
+            return delta;
+        }
+
+        // 创建上次的索引
+        const lastIndex = new Map();
+        lastTraceDetails.forEach(item => {
+            lastIndex.set(item.uid, item);
+        });
+
+        // 遍历当前数据，找出新增项
+        currentDetails.forEach(item => {
+            if (!lastIndex.has(item.uid)) {
+                // 新增的项目
+                if (item.tag === "遗珠" || item.tag === "待售") {
+                    delta.new_purchases.push({
+                        name: item.source_name,
+                        cost: item.cost
+                    });
+                } else if (item.tag === "在售") {
+                    delta.new_listings.push({
+                        name: item.source_name,
+                        price: item.est_revenue
+                    });
+                } else if (item.tag === "已售") {
+                    delta.new_sales.push({
+                        name: item.source_name,
+                        price: item.est_revenue
+                    });
+                }
+            }
+        });
+
+        // 更新上次的 trace_details
+        lastTraceDetails = currentDetails;
+
+        return delta;
+    }
+
     // 🚀 刷新数据函数（手动/自动共用）
     async function refreshAuditData(showLoading = true) {
         try {
@@ -518,6 +571,9 @@
             // 🚀 发送飞书通知（仅手动刷新时发送）
             if (showLoading) {
                 try {
+                    // 计算增量信息
+                    const增量信息 = calculateDelta(d);
+
                     await fetch('/api/notify_refresh', {
                         method: 'POST',
                         headers: {
@@ -528,7 +584,9 @@
                             update_at: d.update_at,
                             total_investment: d.summary.total_investment,
                             current_profit: d.summary.current_profit,
-                            expected_profit: d.summary.expected_profit
+                            expected_profit: d.summary.expected_profit,
+                            realized_cash: d.summary.realized_cash,
+                            details: 增量信息
                         })
                     });
                 } catch (e) {
