@@ -315,6 +315,21 @@ class AutoLister:
             # 🚀 确保价格保留两位小数
             price = round(float(price), 2)
 
+            # 🛡️ [关键修复] 确保页面在卖家中心
+            print("🏥 [页面检查] 确保页面在卖家中心...")
+            if hasattr(self.steampy, 'action_goto_seller_post'):
+                current_url = self.steampy.page.url
+                if "sellerCenterCDK" not in current_url and "sellerCDKey" not in current_url:
+                    print(f"   ⚠️ 当前 URL: {current_url}")
+                    print("   🧭 正在导航到卖家中心...")
+                    nav_success = await self.steampy.action_goto_seller_post()
+                    if not nav_success:
+                        return False, "🚨 上架失败：无法导航到卖家中心"
+                    await asyncio.sleep(1.0)  # 等待页面加载
+                    print("   ✅ 已到达卖家中心")
+                else:
+                    print(f"   ✅ 已在卖家中心：{current_url}")
+
             print(f"\n{'='*60}")
             print(f"🚀 [Step 3] 执行上架操作")
             print(f"   游戏名称：{game_name}")
