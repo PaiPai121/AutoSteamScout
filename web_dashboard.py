@@ -881,6 +881,45 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
             "message": f"标记失败：{str(e)}"
         }
 
+# 🆕 刷新通知 API 接口
+@app.post("/api/notify_refresh")
+async def notify_refresh(request: Request, token: str = Depends(verify_token)):
+    """
+    手动刷新审计数据后发送飞书通知
+    """
+    global global_commander
+
+    try:
+        data = await request.json()
+        update_at = data.get("update_at", "")
+        total_investment = data.get("total_investment", 0)
+        current_profit = data.get("current_profit", 0)
+        expected_profit = data.get("expected_profit", 0)
+
+        # 计算回本进度
+        recovery_rate = (data.get("realized_cash", 0) / total_investment * 100) if total_investment > 0 else 0
+
+        # 发送飞书通知
+        if global_commander and global_commander.notifier:
+            await global_commander.notifier.send_text(
+                f"🔄 [审计数据刷新通知]\n"
+                f"{'═'*50}\n"
+                f"⏰ 刷新时间：{update_at}\n"
+                f"💰 采购总成本：¥{total_investment:.2f}\n"
+                f"✅ 已实现利润：¥{current_profit:.2f}\n"
+                f"📈 预期总利润：¥{expected_profit:.2f}\n"
+                f"📊 回本进度：{recovery_rate:.1f}%\n"
+                f"{'═'*50}\n"
+                f"💡 数据已更新，请查看审计看板"
+            )
+
+        return {"success": True, "message": "通知已发送"}
+
+    except Exception as e:
+        import logging
+        logging.getLogger("Sentinel").error(f"🚨 [刷新通知] 异常：{e}")
+        return {"success": False, "message": str(e)}
+
 # --- 5. 财务自动化闹钟 ---
 async def audit_watchdog():
     """⏲️ 每小时自动捅一次审计接口，确保报表刷新"""

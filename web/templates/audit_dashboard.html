@@ -515,6 +515,27 @@
             // ✅ 调用 loadAudit() 进行无感更新，而不是直接刷新页面
             await loadAudit();
 
+            // 🚀 发送飞书通知（仅手动刷新时发送）
+            if (showLoading) {
+                try {
+                    await fetch('/api/notify_refresh', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...headers
+                        },
+                        body: JSON.stringify({
+                            update_at: d.update_at,
+                            total_investment: d.summary.total_investment,
+                            current_profit: d.summary.current_profit,
+                            expected_profit: d.summary.expected_profit
+                        })
+                    });
+                } catch (e) {
+                    console.warn("📡 飞书通知发送失败:", e);
+                }
+            }
+
         } catch (e) {
             console.warn("📡 刷新失败:", e);
             if (showLoading) {
