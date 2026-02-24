@@ -479,7 +479,7 @@ async def check_game(name: str):
 async def get_dashboard(request: Request):
     return templates.TemplateResponse("base_dashboard.html", {
         "request": request,
-        "css_version": datetime.datetime.now().strftime("%H%M%S"), # 💡 动态版本号，强制刷新所有缓存
+        "css_version": datetime.datetime.now().strftime("%H%M%S%f"), # 💡 动态版本号，强制刷新所有缓存
         "dot_color": "#3fb950" if AGENT_STATE.get("is_running") else "#f85149",
         "current_mission": AGENT_STATE.get('current_mission', '📡 连接中...'),
         "scanned_count": AGENT_STATE.get('scanned_count', 0),
