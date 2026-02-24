@@ -959,27 +959,32 @@ async def notify_refresh(request: Request, token: str = Depends(verify_token)):
 
 # 🆕 一键同步全平台资产 API
 @app.post("/api/sync_all")
-async def sync_all_assets(token: str = Depends(verify_token)):
-    """
-    一键同步全平台资产（杉果订单 + SteamPy 库存）
-    """
+async def sync_all_platforms(token: str = Depends(verify_token)):
+    """🚀 一键同步按钮的后端实现"""
     global global_commander
-    
+    print("⏳ 同步指令已排队，等待当前巡航任务交出浏览器控制权...")
     if not global_commander:
-        return {"success": False, "message": "系统尚未初始化"}
-    
-    try:
-        from Finance_Center.sync_manager import SyncManager
-        
-        sync_manager = SyncManager(global_commander)
-        result = await sync_manager.run_full_sync()
-        
-        return result
-        
-    except Exception as e:
-        import logging
-        logging.getLogger("Sentinel").error(f"🚨 [同步资产] 异常：{e}")
-        return {"success": False, "message": str(e)}
+        return {"status": "error", "msg": "❌ 引擎尚未初始化，请刷新页面重试"}
+
+    async def background_sync():
+        # 使用 global_commander 的锁，防止同步时干扰正在进行的自动巡航
+        async with global_commander.lock:
+            await asyncio.sleep(2)
+            import gc
+            try:
+                manager = SyncManager(global_commander)
+                result = await manager.run_full_sync()
+                # 同步完成后，通过飞书知会一声
+                status_ico = "✅" if result["status"] == "success" else "❌"
+                await global_commander.notifier.send_text(f"{status_ico} 跨平台同步反馈：{result['msg']}")
+                await get_audit_stats()
+            finally:
+                del manager  # 销毁实例
+                gc.collect() # 强制收割内存碎屑
+
+    # 挂载后台任务，立即给前端返回"已开始"
+    asyncio.create_task(background_sync())
+    return {"status": "success", "msg": "📡 指令已下达，正在后台静默同步..."}
 
 # --- 5. 财务自动化闹钟 ---
 
@@ -1057,35 +1062,6 @@ from Finance_Center.sync_manager import SyncManager  # 确保路径正确
 
 # --- 在 FastAPI 路由定义区添加同步接口 ---
 
-@app.post("/api/sync_all")
-async def sync_all_platforms():
-    """🚀 一键同步按钮的后端实现"""
-    global global_commander
-    print("⏳ 同步指令已排队，等待当前巡航任务交出浏览器控制权...")
-    if not global_commander:
-        return {"status": "error", "msg": "❌ 引擎尚未初始化，请刷新页面重试"}
-
-    async def background_sync():
-        # 使用 global_commander 的锁，防止同步时干扰正在进行的自动巡航
-        async with global_commander.lock:
-            await asyncio.sleep(2)
-            import gc
-            try:
-                manager = SyncManager(global_commander)
-                result = await manager.run_full_sync()
-                # 同步完成后，通过飞书知会一声
-                status_ico = "✅" if result["status"] == "success" else "❌"
-                await global_commander.notifier.send_text(f"{status_ico} 跨平台同步反馈：{result['msg']}")
-                await get_audit_stats()
-            finally:
-                del manager  # 销毁实例
-                gc.collect() # 强制收割内存碎屑
-
-    # 挂载后台任务，立即给前端返回“已开始”
-    asyncio.create_task(background_sync())
-    return {"status": "success", "msg": "📡 指令已下达，正在后台静默同步..."}
-
-# if __name__ == "__main__":
 #     uvicorn.run(app, host="0.0.0.0", port=8000)
 if __name__ == "__main__":
     uvicorn.run(

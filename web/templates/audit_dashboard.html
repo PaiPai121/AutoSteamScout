@@ -392,7 +392,7 @@
             
             const result = await res.json();
             
-            if (result.success) {
+            if (result.status === "success") {
                 alert(`✅ 同步完成！\n\n${result.msg || ''}`);
                 // 同步后刷新页面
                 setTimeout(() => location.reload(), 1000);
@@ -596,7 +596,7 @@
                         headers: headers
                     });
                     const syncResult = await syncRes.json();
-                    if (syncResult.success) {
+                    if (syncResult.status === "success") {
                         console.log("✅ 资产同步完成");
                     } else {
                         console.warn("⚠️ 资产同步失败:", syncResult.msg);
