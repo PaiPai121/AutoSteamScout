@@ -328,30 +328,32 @@
             const result = await res.json();
 
             if (result.success) {
-                let statusMsg = "";
                 if (result.status === "success") {
-                    statusMsg = `✅ 上架成功！\n\n📊 上架信息：\n├─ 价格：¥${result.listing_price}\n├─ 预期利润：¥${result.profit}\n└─ 匹配名：${result.market_name}\n\n⏳ 数据已自动同步，正在刷新页面...`;
-                    // 上架成功，自动刷新页面
+                    // 上架成功，显示消息并刷新页面
+                    const statusMsg = `✅ 上架成功！\n\n📊 上架信息：\n├─ 价格：¥${result.listing_price}\n├─ 预期利润：¥${result.profit}\n└─ 匹配名：${result.market_name}\n\n⏳ 数据已自动同步，正在刷新页面...`;
+                    alert(statusMsg);
                     setTimeout(() => location.reload(), 1500);
-                    return;  // 直接返回，不显示 alert
+                    return;  // 直接返回，不在 finally 中恢复按钮
                 } else if (result.status.includes("skipped")) {
-                    statusMsg = `⏭️ 已跳过\n\n📝 原因：${result.message}`;
+                    // 被跳过
+                    alert(`⏭️ 已跳过\n\n📝 原因：${result.message}`);
+                    setTimeout(() => location.reload(), 1000);
+                    return;
                 } else {
-                    statusMsg = `ℹ️ 处理完成\n\n📝 状态：${result.status}\n📝 详情：${result.message}`;
+                    // 其他状态
+                    alert(`ℹ️ 处理完成\n\n📝 状态：${result.status}\n📝 详情：${result.message}`);
+                    setTimeout(() => location.reload(), 1000);
+                    return;
                 }
-                alert(statusMsg);
-
-                // 非成功状态也刷新页面（数据可能有变化）
-                setTimeout(() => location.reload(), 1000);
             } else {
+                // 上架失败
                 alert(`❌ 上架失败：${result.message}`);
             }
         } catch (e) {
             console.error("上架异常:", e);
             alert(`❌ 请求失败：${e.message}`);
         } finally {
-            autoListInProgress = false;
-            // 恢复所有上架按钮
+            // 只有出错时才恢复按钮（成功/跳过都会刷新页面）
             const allButtons = document.querySelectorAll('button[onclick^="listSingleItem"]');
             allButtons.forEach(btn => {
                 btn.disabled = false;
