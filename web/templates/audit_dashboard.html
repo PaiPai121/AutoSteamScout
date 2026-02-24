@@ -330,19 +330,20 @@
             if (result.success) {
                 if (result.status === "success") {
                     // 上架成功，显示消息并刷新页面
-                    const statusMsg = `✅ 上架成功！\n\n📊 上架信息：\n├─ 价格：¥${result.listing_price}\n├─ 预期利润：¥${result.profit}\n└─ 匹配名：${result.market_name}\n\n⏳ 数据已自动同步，正在刷新页面...`;
+                    const statusMsg = `✅ 上架成功！\n\n📊 上架信息：\n├─ 价格：¥${result.listing_price}\n├─ 预期利润：¥${result.profit}\n└─ 匹配名：${result.market_name}\n\n⏳ 数据已自动同步，点击确定后刷新页面...`;
                     alert(statusMsg);
-                    setTimeout(() => location.reload(), 1500);
-                    return;  // 直接返回，不在 finally 中恢复按钮
+                    // 用户点击确定后立即刷新
+                    location.reload();
+                    return;
                 } else if (result.status.includes("skipped")) {
                     // 被跳过
                     alert(`⏭️ 已跳过\n\n📝 原因：${result.message}`);
-                    setTimeout(() => location.reload(), 1000);
+                    location.reload();
                     return;
                 } else {
                     // 其他状态
                     alert(`ℹ️ 处理完成\n\n📝 状态：${result.status}\n📝 详情：${result.message}`);
-                    setTimeout(() => location.reload(), 1000);
+                    location.reload();
                     return;
                 }
             } else {
