@@ -153,6 +153,9 @@
             console.log(`🚀 侦测到新账本 [${d.update_at}]，正在更新视图...`);
             lastUpdateAt = d.update_at;
 
+            // 📊 初始化 lastTraceDetails（用于增量计算）
+            lastTraceDetails = d.details.trace_details || [];
+
             // --- 以下是静默替换逻辑，不会引起白屏或归零 ---
             document.getElementById('update_time').innerText = "最后清算：" + d.update_at;
             document.getElementById('total_investment').innerText = "¥ " + d.summary.total_investment;
