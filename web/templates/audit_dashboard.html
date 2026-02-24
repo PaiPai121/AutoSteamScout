@@ -26,6 +26,9 @@
                 <button onclick="autoListMissing()" id="auto_list_btn" class="bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded text-sm transition flex items-center gap-2">
                     🚀 一键上架
                 </button>
+                <button onclick="syncAllAssets()" id="sync_btn" class="bg-blue-700 hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded text-sm transition flex items-center gap-2">
+                    🔄 一键同步
+                </button>
                 <button onclick="refreshAuditData()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded text-sm transition">🔄 刷新数据</button>
             </div>
         </div>
@@ -366,6 +369,45 @@
         }
     }
 
+    // 🔄 一键同步全平台资产
+    async function syncAllAssets() {
+        const confirmMsg = `🔄 确认同步全平台资产？\n\n系统将：\n1. 同步杉果订单数据\n2. 同步 SteamPy 库存数据\n3. 刷新财务数据\n\n⏳ 预计耗时：30-60 秒\n\n确认继续？`;
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+
+        const syncBtn = document.getElementById('sync_btn');
+        const originalText = syncBtn.innerHTML;
+        
+        try {
+            syncBtn.disabled = true;
+            syncBtn.innerHTML = "⏳ 同步中...";
+            
+            const headers = API_TOKEN ? { 'Authorization': `Bearer ${API_TOKEN}` } : {};
+            
+            const res = await fetch('/api/sync_all', {
+                method: 'POST',
+                headers: headers
+            });
+            
+            const result = await res.json();
+            
+            if (result.success) {
+                alert(`✅ 同步完成！\n\n${result.msg || ''}`);
+                // 同步后刷新页面
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                alert(`❌ 同步失败：${result.msg || '未知错误'}`);
+            }
+        } catch (e) {
+            console.error("同步异常:", e);
+            alert(`❌ 同步失败：${e.message}`);
+        } finally {
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = originalText;
+        }
+    }
+
     // 🚫 标记损毁函数
     async function markAsDamaged(uid, name) {
         const confirmMsg = `🚫 确认标记为损毁？\n\n游戏：${name}\n🆔 商品 ID: ${uid}\n\n标记为损毁后：\n├─ 只记录成本\n├─ 不允许上架\n└─ 在财务报表中单独显示\n\n确认继续？`;
@@ -536,15 +578,35 @@
                 if (refreshBtn) {
                     const originalText = refreshBtn.innerHTML;
                     refreshBtn.disabled = true;
-                    refreshBtn.innerHTML = "⏳ 刷新中...";
+                    refreshBtn.innerHTML = "⏳ 同步并刷新中...";
 
                     setTimeout(() => {
                         refreshBtn.disabled = false;
                         refreshBtn.innerHTML = "🔄 刷新数据";
-                    }, 3000);
+                    }, 5000);
                 }
             }
 
+            // 🔄 先同步资产（调用后端 API）
+            if (showLoading) {
+                console.log("🔄 正在同步全平台资产...");
+                try {
+                    const syncRes = await fetch('/api/sync_all', {
+                        method: 'POST',
+                        headers: headers
+                    });
+                    const syncResult = await syncRes.json();
+                    if (syncResult.success) {
+                        console.log("✅ 资产同步完成");
+                    } else {
+                        console.warn("⚠️ 资产同步失败:", syncResult.msg);
+                    }
+                } catch (e) {
+                    console.warn("⚠️ 资产同步异常:", e);
+                }
+            }
+
+            // 📊 再读取审计数据
             const res = await fetch('/api/audit_stats', { headers });
 
             if (res.status === 401) {

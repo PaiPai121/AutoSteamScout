@@ -957,7 +957,32 @@ async def notify_refresh(request: Request, token: str = Depends(verify_token)):
         logging.getLogger("Sentinel").error(f"🚨 [刷新通知] 异常：{e}")
         return {"success": False, "message": str(e)}
 
+# 🆕 一键同步全平台资产 API
+@app.post("/api/sync_all")
+async def sync_all_assets(token: str = Depends(verify_token)):
+    """
+    一键同步全平台资产（杉果订单 + SteamPy 库存）
+    """
+    global global_commander
+    
+    if not global_commander:
+        return {"success": False, "message": "系统尚未初始化"}
+    
+    try:
+        from Finance_Center.sync_manager import SyncManager
+        
+        sync_manager = SyncManager(global_commander)
+        result = await sync_manager.run_full_sync()
+        
+        return result
+        
+    except Exception as e:
+        import logging
+        logging.getLogger("Sentinel").error(f"🚨 [同步资产] 异常：{e}")
+        return {"success": False, "message": str(e)}
+
 # --- 5. 财务自动化闹钟 ---
+
 async def audit_watchdog():
     """⏲️ 每小时自动捅一次审计接口，确保报表刷新"""
     while True:
