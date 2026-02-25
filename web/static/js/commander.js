@@ -43,7 +43,7 @@ async function submitPost() {
 }
 
 async function checkProfit() {
-    const btn = document.querySelector('button');
+    const btn = document.querySelector('.search-box .btn-gold');  // 明确选择侦察按钮
     const resArea = document.getElementById('resultArea');
     const name = document.getElementById('gameInput').value;
     if(!name) return;
