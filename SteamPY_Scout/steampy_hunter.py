@@ -1,6 +1,8 @@
 import asyncio
 import re
 import datetime
+import json
+import time
 from SteamPY_Scout.steampy_scout_core import SteamPyScout
 from tabulate import tabulate
 import sys
@@ -102,12 +104,151 @@ def extract_version(name: str) -> str:
 
 
 class SteamPyMonitor(SteamPyScout):
+    # --- 缓存配置 ---
+    CACHE_FILE = "data/search_cache.json"
+    LEDGER_FILE = "data/purchase_ledger.json"
+    SALES_FILE = "data/steampy_sales.json"
+    CACHE_TTL = 86400  # 缓存有效期 24 小时
+
     def __init__(self, **kwargs):
         # 💡 先调用父类的初始化
         super().__init__(**kwargs)
         # 💡 显式声明这个成员变量，初始为空
-        self.notifier = None 
+        self.notifier = None
         self._shot_counter = 0 # 顺便初始化你的截图计数器
+
+    # --- 🗄️ 搜索缓存系统 ---
+    def _load_json_safe(self, filepath):
+        """安全加载 JSON 文件，失败返回空"""
+        try:
+            if os.path.exists(filepath):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"⚠️ [缓存] 读取 {filepath} 失败: {e}")
+        return [] if filepath.endswith("ledger.json") or filepath.endswith("sales.json") else {}
+
+    def _get_name_by_cdkey(self, cd_key):
+        """
+        第一层缓存：通过 cd_key 从历史匹配中获取 SteamPy 名称
+        purchase_ledger + steampy_sales 中 cd_key 相同的记录
+        """
+        if not cd_key:
+            return None
+
+        cd_key_upper = cd_key.strip().upper()
+
+        # 加载两个文件
+        ledger = self._load_json_safe(self.LEDGER_FILE)
+        sales = self._load_json_safe(self.SALES_FILE)
+
+        # 构建 sales 的 cd_key -> name 映射
+        sales_map = {}
+        for item in sales:
+            key = item.get("cd_key", "").strip().upper()
+            if key:
+                sales_map[key] = item.get("name", "")
+
+        # 在 sales 中查找相同 cd_key
+        if cd_key_upper in sales_map:
+            steampy_name = sales_map[cd_key_upper]
+            if steampy_name:
+                return steampy_name
+
+        return None
+
+    def _get_name_from_cache(self, sk_name):
+        """
+        第二层缓存：从本地搜索缓存中获取 SteamPy 名称
+        """
+        cache = self._load_json_safe(self.CACHE_FILE)
+
+        if sk_name in cache:
+            entry = cache[sk_name]
+            cached_at = entry.get("cached_at", 0)
+
+            # 检查是否过期
+            if time.time() - cached_at < self.CACHE_TTL:
+                return entry.get("steampy_name")
+            else:
+                print(f"⚠️ [缓存] 名称缓存已过期: {sk_name}")
+
+        return None
+
+    def _save_to_cache(self, sk_name, steampy_name):
+        """
+        保存搜索结果到本地缓存
+        """
+        try:
+            cache = self._load_json_safe(self.CACHE_FILE)
+
+            cache[sk_name] = {
+                "steampy_name": steampy_name,
+                "cached_at": time.time()
+            }
+
+            # 确保目录存在
+            os.makedirs(os.path.dirname(self.CACHE_FILE), exist_ok=True)
+
+            with open(self.CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(cache, f, ensure_ascii=False, indent=2)
+
+            print(f"💾 [缓存] 已保存: {sk_name} → {steampy_name}")
+        except Exception as e:
+            print(f"⚠️ [缓存] 保存失败: {e}")
+
+    async def _get_current_game_name(self):
+        """
+        从当前详情页获取游戏名称
+        """
+        try:
+            name_el = await self.page.query_selector(".gameName")
+            if name_el:
+                return (await name_el.text_content()).strip()
+        except Exception as e:
+            print(f"⚠️ [缓存] 获取当前游戏名失败: {e}")
+        return None
+
+    async def search_with_cache(self, sk_name, cd_key=None, original_name=None):
+        """
+        带缓存的搜索，三层 fallback：
+        1. cd_key 精准匹配（历史成交记录）
+        2. 名称缓存（本地搜索缓存）
+        3. 原始搜索（兜底）
+        """
+        source_name = original_name or sk_name
+
+        # === 第一层：cd_key 精准匹配 ===
+        if cd_key:
+            cached_name = self._get_name_by_cdkey(cd_key)
+            if cached_name:
+                print(f"📦 [缓存] cd_key 命中: {sk_name} → {cached_name}")
+                success = await self.action_search(cached_name, original_name=source_name)
+                if success:
+                    return True
+                print(f"⚠️ [缓存] cd_key 缓存名搜索失败，继续 fallback")
+
+        # === 第二层：名称缓存 ===
+        cached_name = self._get_name_from_cache(sk_name)
+        if cached_name:
+            print(f"📦 [缓存] 名称命中: {sk_name} → {cached_name}")
+            success = await self.action_search(cached_name, original_name=source_name)
+            if success:
+                return True
+            print(f"⚠️ [缓存] 名称缓存搜索失败，继续 fallback")
+
+        # === 兜底：原始搜索 ===
+        print(f"🔍 [搜索] 缓存未命中，走原始流程: {sk_name}")
+        success = await self.action_search(sk_name, original_name=source_name)
+
+        # 成功后回写缓存
+        if success:
+            actual_name = await self._get_current_game_name()
+            if actual_name and actual_name != sk_name:
+                self._save_to_cache(sk_name, actual_name)
+
+        return success
+
     # --- 📸 侦察机黑匣子系统 ---
     async def take_screenshot(self, step_name):
         """
@@ -503,20 +644,26 @@ class SteamPyMonitor(SteamPyScout):
                 break
         await self.stop()
 
-    async def get_game_market_price_with_name(self, name, original_name=None):
+    async def get_game_market_price_with_name(self, name, original_name=None, cd_key=None):
         """
         [巡航核心] 这里的逻辑必须和手动 scan 成功的逻辑完全一致
 
         参数:
             name: 搜索词（可能已降噪）
             original_name: 原始商品名（用于版本校验），透传给 action_search
+            cd_key: 可选，用于缓存匹配
         """
         try:
-            success = await self.action_search(name, original_name=original_name)
+            # 💡 使用带缓存的搜索
+            if cd_key:
+                success = await self.search_with_cache(name, cd_key=cd_key, original_name=original_name)
+            else:
+                success = await self.search_with_cache(name, original_name=original_name)
+
             if not success: return None
 
             await asyncio.sleep(2.0) # 确保表格加载
-            
+
             # 1. 获取名字
             name_el = await self.page.query_selector(".gameName")
             actual_name = (await name_el.text_content()).strip() if name_el else "未知"
@@ -524,7 +671,7 @@ class SteamPyMonitor(SteamPyScout):
             # 2. 💡 搬运 scan 成功的逻辑：抓取前 5 行价格
             rows = await self.page.query_selector_all(".ivu-table-tbody tr.ivu-table-row")
             top5_prices = []
-            
+
             for row in rows[:5]:
                 cells = await row.query_selector_all("td")
                 if len(cells) >= 5:
@@ -533,11 +680,11 @@ class SteamPyMonitor(SteamPyScout):
                     p_match = re.search(r"\d+\.?\d*", p_text)
                     if p_match:
                         top5_prices.append(float(p_match.group()))
-            
+
             if top5_prices:
                 # 返回：最低价, 实际名, 价格阵列
                 return top5_prices[0], actual_name, top5_prices
-            
+
             return None
         except Exception as e:
             print(f"🚨 巡航抓取异常: {e}")

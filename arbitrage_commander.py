@@ -236,13 +236,17 @@ class ArbitrageCommander:
         # --- 2. 搜索词降噪（不缩词，调用类外定义的 get_search_query） ---
         search_keyword = get_search_query(sk_name)
         print(f"🔍 [COMMANDER] 原始名: [{sk_name}] -> 降噪搜索词: [{search_keyword}]")
+
+        # 💡 提取 cd_key 用于缓存匹配
+        cd_key = sk_item.get('cd_key') or (sk_item.get('all_keys', [None])[0] if sk_item.get('all_keys') else None)
+
         # --- 3. 跨平台侦察 (SteamPy 撞库) ---
         py_data = None
         # --- 3. 跨平台侦察 (SteamPy 撞库) ---
         async with self.lock:
             try:
-                # 💡 传入原始名用于版本校验，搜索词用于搜索
-                res = await self.steampy.get_game_market_price_with_name(search_keyword, original_name=sk_name)
+                # 💡 传入原始名用于版本校验，cd_key 用于缓存匹配
+                res = await self.steampy.get_game_market_price_with_name(search_keyword, original_name=sk_name, cd_key=cd_key)
 
                 if not res or len(res) < 3:
                     print(f"⚠️ [COMMANDER] {search_keyword} 变现端无匹配或格式错误")
