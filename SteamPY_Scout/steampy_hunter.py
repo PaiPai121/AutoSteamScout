@@ -68,6 +68,37 @@ def generate_search_variants(name: str) -> list:
     return result
 
 
+def extract_version(name: str) -> str:
+    """
+    提取商品版本标签，归一化为统一标识
+    无标签或标准版都归一化为 'STANDARD'
+    """
+    # 版本映射表（按优先级排序，长标签优先匹配）
+    version_map = [
+        # 超级豪华版系列（必须在豪华版之前）
+        ("超级豪华版", "ULTIMATE"), ("超豪华版", "ULTIMATE"), ("ULTIMATE", "ULTIMATE"),
+        # 豪华版系列
+        ("豪华版", "DELUXE"), ("DELUXE", "DELUXE"),
+        # 黄金版系列
+        ("黄金版", "GOLD"), ("GOLD EDITION", "GOLD"), ("GOLD", "GOLD"),
+        # 年度版系列
+        ("年度版", "GOTY"), ("GOTY", "GOTY"), ("GAME OF THE YEAR", "GOTY"),
+        # 完整版系列
+        ("完整版", "COMPLETE"), ("完全版", "COMPLETE"), ("COMPLETE", "COMPLETE"),
+        # 典藏版系列
+        ("典藏版", "COLLECTOR"), ("COLLECTOR", "COLLECTOR"),
+        # 标准版系列（放最后）
+        ("标准版", "STANDARD"), ("STANDARD", "STANDARD"),
+    ]
+
+    name_upper = name.upper()
+    for tag, normalized in version_map:
+        if tag.upper() in name_upper:
+            return normalized
+
+    return "STANDARD"  # 无标签 = 标准版
+
+
 class SteamPyMonitor(SteamPyScout):
     def __init__(self, **kwargs):
         # 💡 先调用父类的初始化
@@ -244,21 +275,28 @@ class SteamPyMonitor(SteamPyScout):
             print(f"❌ 搜索结果为空，尝试了所有变体仍未找到: {name}")
             return False
 
-        # 4. 权重评分系统：在结果中筛选出最像“本体”的一个
+        # 4. 权重评分系统：在结果中筛选出最像"本体"的一个
+        source_version = extract_version(name)  # 提取源商品版本
         scored_results = []
         for card in cards:
             name_el = await card.query_selector(".gameName")
             if name_el:
                 actual_name = (await name_el.text_content()).strip()
                 score = 0
-                
-                # A. 基础分：包含即有分，全等满分
-                if actual_name == name: 
+
+                # A. 版本一致性校验（最高优先级）
+                target_version = extract_version(actual_name)
+                if source_version != target_version:
+                    score -= 200  # 版本不一致，直接判负
+                    print(f"   ⚠️ 版本不匹配: [{name}]({source_version}) vs [{actual_name}]({target_version})")
+
+                # B. 基础分：包含即有分，全等满分
+                if actual_name == name:
                     score += 100
-                elif name.lower() in actual_name.lower() or actual_name.lower() in name.lower(): 
+                elif name.lower() in actual_name.lower() or actual_name.lower() in name.lower():
                     score += 50
-                
-                # B. 负向惩罚：自动排除 DLC、原声带、合集等干扰项
+
+                # C. 负向惩罚：自动排除 DLC、原声带、合集等干扰项
                 interference_tags = {
                     "DLC": 80, "扩展": 80, "原声": 90, "SOUNDTRACK": 90,
                     "BUNDLE": 40, "合集": 40, "测试": 90, "体验版": 90
@@ -266,8 +304,8 @@ class SteamPyMonitor(SteamPyScout):
                 for tag, penalty in interference_tags.items():
                     if tag.upper() in actual_name.upper():
                         score -= penalty
-                
-                scored_results.append({"score": score, "card": card, "name": actual_name})
+
+                scored_results.append({"score": score, "card": card, "name": actual_name, "version": target_version})
 
         # 5. 决策与跳转：只要评分最高者 > 0 就点进去，交给 AI 审计最终版本
         scored_results.sort(key=lambda x: x["score"], reverse=True)
