@@ -228,11 +228,18 @@ class SteamPyMonitor(SteamPyScout):
                 print(f"❌ 所有尝试均失败：{final_e}")
 
 
-    async def action_search(self, name):
+    async def action_search(self, name, original_name=None):
         """
         [稳定 Work 版] 搜索内核：采用多轮变体重试 + 权重评分决策
+
+        参数:
+            name: 搜索词（可能已降噪），用于生成变体去搜索
+            original_name: 原始商品名（用于版本校验），不传则用 name
         """
         import asyncio
+
+        # 版本校验用原始名，搜索用降噪后的 name
+        source_name = original_name or name
 
         # 1. 确保在列表页并初始化
         await self.action_goto()
@@ -276,7 +283,7 @@ class SteamPyMonitor(SteamPyScout):
             return False
 
         # 4. 权重评分系统：在结果中筛选出最像"本体"的一个
-        source_version = extract_version(name)  # 提取源商品版本
+        source_version = extract_version(source_name)  # 用原始名提取版本
         scored_results = []
         for card in cards:
             name_el = await card.query_selector(".gameName")
@@ -288,7 +295,7 @@ class SteamPyMonitor(SteamPyScout):
                 target_version = extract_version(actual_name)
                 if source_version != target_version:
                     score -= 200  # 版本不一致，直接判负
-                    print(f"   ⚠️ 版本不匹配: [{name}]({source_version}) vs [{actual_name}]({target_version})")
+                    print(f"   ⚠️ 版本不匹配: [{source_name}]({source_version}) vs [{actual_name}]({target_version})")
 
                 # B. 基础分：包含即有分，全等满分
                 if actual_name == name:
@@ -472,12 +479,16 @@ class SteamPyMonitor(SteamPyScout):
                 break
         await self.stop()
 
-    async def get_game_market_price_with_name(self, name):
+    async def get_game_market_price_with_name(self, name, original_name=None):
         """
         [巡航核心] 这里的逻辑必须和手动 scan 成功的逻辑完全一致
+
+        参数:
+            name: 搜索词（可能已降噪）
+            original_name: 原始商品名（用于版本校验），透传给 action_search
         """
         try:
-            success = await self.action_search(name)
+            success = await self.action_search(name, original_name=original_name)
             if not success: return None
 
             await asyncio.sleep(2.0) # 确保表格加载

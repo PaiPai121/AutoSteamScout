@@ -202,16 +202,16 @@ class ArbitrageCommander:
         # --- 3. 跨平台侦察 (SteamPy 撞库) ---
         async with self.lock:
             try:
-                # 💡 核心修复：直接获取结果并判定
-                res = await self.steampy.get_game_market_price_with_name(search_keyword)
-                
+                # 💡 传入原始名用于版本校验，搜索词用于搜索
+                res = await self.steampy.get_game_market_price_with_name(search_keyword, original_name=sk_name)
+
                 if not res or len(res) < 3:
                     print(f"⚠️ [COMMANDER] {search_keyword} 变现端无匹配或格式错误")
                     return None
-                
+
                 # 解包三元组
                 py_price, py_match_name, top5_list = res
-                
+
             except Exception as e:
                 print(f"🚨 SteamPy 搜索链路故障: {e}")
                 return None
