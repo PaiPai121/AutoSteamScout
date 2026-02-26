@@ -103,24 +103,63 @@ class ArbitrageCommander:
         await self.sonkwo.stop()
         await self.steampy.stop()
 
+    def _find_best_match(self, sk_results, target_name):
+        """
+        在杉果搜索结果中找到最匹配目标名称的商品
+        匹配优先级：完全匹配 > 去空格匹配 > 包含关系
+        """
+        target_lower = target_name.lower()
+        target_nospace = target_lower.replace(' ', '')
+
+        best_candidate = None
+
+        for item in sk_results:
+            title = item.get('title', '')
+            title_lower = title.lower()
+            title_nospace = title_lower.replace(' ', '')
+
+            # 完全匹配：直接返回
+            if title == target_name or title_lower == target_lower:
+                return item
+
+            # 去空格后完全匹配
+            if title_nospace == target_nospace:
+                return item
+
+            # 包含关系：记录为候选，继续找更好的
+            if best_candidate is None:
+                if target_lower in title_lower or title_lower in target_lower:
+                    best_candidate = item
+                elif target_nospace in title_nospace or title_nospace in target_nospace:
+                    best_candidate = item
+
+        return best_candidate
+
     async def analyze_arbitrage(self, game_name):
         """专项点杀：适配 Top 5 展示"""
-        clean_name = get_search_query(game_name) 
+        clean_name = get_search_query(game_name)
         sk_results = await self.sonkwo.get_search_results(keyword=clean_name)
-        
-        if not sk_results: return "❌ 杉果未找到该商品"
 
-        # 💡 这里会自动调用 process_arbitrage_item，内部已经处理了 Top5 逻辑
-        log_entry = await self.process_arbitrage_item(sk_results[0], is_manual=True)
+        if not sk_results:
+            return "❌ 杉果未找到该商品"
 
-        if not log_entry: return "❌ 变现端未搜到匹配结果"
+        # 💡 在搜索结果中找到最匹配的商品
+        target_item = self._find_best_match(sk_results, game_name)
+
+        if not target_item:
+            return f"❌ 杉果搜索结果中未找到匹配「{game_name}」的商品"
+
+        log_entry = await self.process_arbitrage_item(target_item, is_manual=True)
+
+        if not log_entry:
+            return "❌ 变现端未搜到匹配结果"
 
         report = (
             f"🔍 [侦察详情]\n🔹 杉果原名: {log_entry['name']}\n"
             f"⚖️ 判定结果: {log_entry['status']}\n"
             f"--------------------------\n"
             f"🍎 成本: {log_entry['sk_price']}\n"
-            f"🍏 SteamPy (Top5): {log_entry['py_price']}\n" 
+            f"🍏 SteamPy (Top5): {log_entry['py_price']}\n"
             f"💵 预计净利: {log_entry['profit']} | 📈 ROI: {log_entry['roi']}\n"
             f"📝 审计理由: {log_entry['reason']}\n"
             f"--------------------------\n"

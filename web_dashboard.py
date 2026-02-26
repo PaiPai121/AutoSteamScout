@@ -250,14 +250,7 @@ async def feishu_bot_handler(request: Request):
         if query_game and global_commander:
             async def task():
                 try:
-                    sk_results = await global_commander.sonkwo.get_search_results(query_game)
-                    if sk_results:
-                        # 💡 只有这一行！内部自动完成比价、去重、推送到 Web 界面
-                        await global_commander.process_arbitrage_item(sk_results[0], is_manual=True)
-                        # save_history() # 存档
-                    
-                    # 💡 注意：如果你还需要给飞书发文字回复，可以单独调用 analyze_arbitrage
-                    # 但为了不重复查价，建议以后把文字报告也收束到 process_arbitrage_item 里
+                    # 💡 直接调用 analyze_arbitrage，内部已修复匹配逻辑
                     report = await global_commander.analyze_arbitrage(query_game)
                     await global_commander.notifier.send_text(f"🎯 侦察回报：\n{report}")
                 except Exception as e:
