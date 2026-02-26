@@ -77,6 +77,8 @@ def extract_version(name: str) -> str:
     version_map = [
         # 超级豪华版系列（必须在豪华版之前）
         ("超级豪华版", "ULTIMATE"), ("超豪华版", "ULTIMATE"), ("ULTIMATE", "ULTIMATE"),
+        # 终极版系列（必须在豪华版之前）
+        ("终极版", "ULTIMATE"), ("最终版", "ULTIMATE"),
         # 豪华版系列
         ("豪华版", "DELUXE"), ("DELUXE", "DELUXE"),
         # 黄金版系列
@@ -303,14 +305,25 @@ class SteamPyMonitor(SteamPyScout):
                     score_details.append(f"版本匹配({target_version}): +0")
 
                 # B. 基础分：包含即有分，全等满分
+                # 先用原始字符串匹配（保持原有逻辑）
+                name_lower = name.lower()
+                actual_lower = actual_name.lower()
+
                 if actual_name == name:
                     score += 100
                     score_details.append("完全匹配: +100")
-                elif name.lower() in actual_name.lower() or actual_name.lower() in name.lower():
+                elif name_lower in actual_lower or actual_lower in name_lower:
                     score += 50
                     score_details.append("包含匹配: +50")
                 else:
-                    score_details.append("名称不匹配: +0")
+                    # 备选：去除空格后再匹配（解决「无主之地3」vs「无主之地 3」的问题）
+                    name_nospace = name_lower.replace(" ", "")
+                    actual_nospace = actual_lower.replace(" ", "")
+                    if name_nospace in actual_nospace or actual_nospace in name_nospace:
+                        score += 50
+                        score_details.append("包含匹配(去空格): +50")
+                    else:
+                        score_details.append("名称不匹配: +0")
 
                 # C. 负向惩罚：自动排除 DLC、原声带、合集等干扰项
                 interference_tags = {
