@@ -5,6 +5,69 @@ from SteamPY_Scout.steampy_scout_core import SteamPyScout
 from tabulate import tabulate
 import sys
 import os
+
+
+def generate_search_variants(name: str) -> list:
+    """
+    生成搜索变体，应对不同平台命名差异
+    策略：由精确到模糊，命中即停
+    """
+    variants = []
+
+    # === 第一梯队：原名及标点变换 ===
+    variants.append(name)                                    # 原名
+    variants.append(re.sub(r'[：:，,。\.·・\-—]', ' ', name))  # 标点→空格
+    variants.append(re.sub(r'[：:，,。\.·・\-—]', '', name))   # 标点删除
+
+    # === 第二梯队：副标题截断 ===
+    # "生化危机4：重制版" → "生化危机4"
+    if re.search(r'[：:\-—]', name):
+        base_name = re.split(r'[：:\-—]', name)[0].strip()
+        if len(base_name) >= 2:  # 避免截得太短
+            variants.append(base_name)
+
+    # === 第三梯队：数字/罗马数字互转 ===
+    roman_map = [
+        ('1', 'I'), ('2', 'II'), ('3', 'III'), ('4', 'IV'),
+        ('5', 'V'), ('6', 'VI'), ('7', 'VII'), ('8', 'VIII'),
+        ('9', 'IX'), ('10', 'X')
+    ]
+    for arabic, roman in roman_map:
+        if arabic in name:
+            variants.append(name.replace(arabic, roman))
+        if roman in name.upper():
+            # 保持原大小写风格
+            variants.append(re.sub(roman, arabic, name, flags=re.I))
+
+    # === 第四梯队：空格/无空格变体 ===
+    # "GTA 5" vs "GTA5"
+    variants.append(re.sub(r'\s+', '', name))       # 删除所有空格
+    variants.append(re.sub(r'(\D)(\d)', r'\1 \2', name))  # 字母数字间加空格
+
+    # === 第五梯队：常见别名处理 ===
+    alias_map = {
+        '艾尔登法环': ['Elden Ring', '老头环'],
+        '黑神话悟空': ['Black Myth Wukong', '黑神话：悟空'],
+        '赛博朋克2077': ['Cyberpunk 2077'],
+    }
+    clean_name = re.sub(r'[：:，,。\.·・\-—\s]', '', name)
+    for key, aliases in alias_map.items():
+        if clean_name == key or name in aliases:
+            variants.extend(aliases)
+            variants.append(key)
+
+    # === 去重保序 ===
+    seen = set()
+    result = []
+    for v in variants:
+        v = ' '.join(v.split()).strip()  # 清理多余空格
+        if v and v.lower() not in seen:
+            seen.add(v.lower())
+            result.append(v)
+
+    return result
+
+
 class SteamPyMonitor(SteamPyScout):
     def __init__(self, **kwargs):
         # 💡 先调用父类的初始化
@@ -138,26 +201,19 @@ class SteamPyMonitor(SteamPyScout):
         """
         [稳定 Work 版] 搜索内核：采用多轮变体重试 + 权重评分决策
         """
-        import re
         import asyncio
-        
+
         # 1. 确保在列表页并初始化
         await self.action_goto()
-        
+
         # 2. 准备搜索变体：应对 SteamPy 数据库命名不一的问题
-        search_variants = [
-            name,                                   # 原名
-            re.sub(r'[：:，,。\.·・\-]', ' ', name),   # 标点变空格
-            re.sub(r'[：:，,。\.·・\-]', '', name)     # 标点全删（如黑神话悟空）
-        ]
-        unique_variants = list(dict.fromkeys(search_variants))
-        
+        search_variants = generate_search_variants(name)
+
         cards = []
         search_input = None
-        
+
         # 3. 循环尝试每一个变体，直到搜到结果
-        for variant in unique_variants:
-            variant = " ".join(variant.split()).strip() # 清理多余空格
+        for variant in search_variants:
             if not variant: continue
             
             print(f"📡 [SteamPy] 尝试搜索变体: [{variant}]")
