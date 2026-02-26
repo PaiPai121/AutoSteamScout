@@ -284,24 +284,33 @@ class SteamPyMonitor(SteamPyScout):
 
         # 4. 权重评分系统：在结果中筛选出最像"本体"的一个
         source_version = extract_version(source_name)  # 用原始名提取版本
+        print(f"📋 [评分系统] 源商品: [{source_name}] 版本: {source_version}")
+
         scored_results = []
-        for card in cards:
+        for idx, card in enumerate(cards, 1):
             name_el = await card.query_selector(".gameName")
             if name_el:
                 actual_name = (await name_el.text_content()).strip()
                 score = 0
+                score_details = []  # 记录得分明细
 
                 # A. 版本一致性校验（最高优先级）
                 target_version = extract_version(actual_name)
                 if source_version != target_version:
                     score -= 200  # 版本不一致，直接判负
-                    print(f"   ⚠️ 版本不匹配: [{source_name}]({source_version}) vs [{actual_name}]({target_version})")
+                    score_details.append(f"版本不匹配({source_version}!={target_version}): -200")
+                else:
+                    score_details.append(f"版本匹配({target_version}): +0")
 
                 # B. 基础分：包含即有分，全等满分
                 if actual_name == name:
                     score += 100
+                    score_details.append("完全匹配: +100")
                 elif name.lower() in actual_name.lower() or actual_name.lower() in name.lower():
                     score += 50
+                    score_details.append("包含匹配: +50")
+                else:
+                    score_details.append("名称不匹配: +0")
 
                 # C. 负向惩罚：自动排除 DLC、原声带、合集等干扰项
                 interference_tags = {
@@ -311,7 +320,9 @@ class SteamPyMonitor(SteamPyScout):
                 for tag, penalty in interference_tags.items():
                     if tag.upper() in actual_name.upper():
                         score -= penalty
+                        score_details.append(f"干扰项[{tag}]: -{penalty}")
 
+                print(f"   [{idx}] {actual_name} | 版本:{target_version} | 得分:{score} | 明细: {', '.join(score_details)}")
                 scored_results.append({"score": score, "card": card, "name": actual_name, "version": target_version})
 
         # 5. 决策与跳转：只要评分最高者 > 0 就点进去，交给 AI 审计最终版本
