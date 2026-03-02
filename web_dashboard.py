@@ -298,8 +298,18 @@ async def continuous_cruise():
                 print("🚀 [重启] 正在启动全新的侦察机引擎...")
                 async with global_commander.lock:
                     print("🚀 [重启] 正在启动全新引擎...")
-                    await global_commander.init_all() 
+                    await global_commander.init_all()
                     AGENT_STATE["is_running"] = True
+
+                # 🗑️ [关键] 每次巡航前清空历史记录，确保数据实时性
+                AGENT_STATE["history"] = []
+                if os.path.exists(HISTORY_FILE):
+                    try:
+                        os.remove(HISTORY_FILE)
+                        logger.info("🗑️ [历史清理] 已清空 arbitrage_history.json")
+                    except Exception as e:
+                        logger.warning(f"⚠️ 清理历史文件失败：{e}")
+
                 start_time = datetime.datetime.now()
                 match_count = 0  # 成功匹配数量
                 profit_count = 0 # 达到利润门槛数量
