@@ -588,22 +588,20 @@
             }
 
             // 🔄 先同步资产（调用后端 API）
-            if (showLoading) {
-                console.log("🔄 正在同步全平台资产...");
-                try {
-                    const syncRes = await fetch('/api/sync_all', {
-                        method: 'POST',
-                        headers: headers
-                    });
-                    const syncResult = await syncRes.json();
-                    if (syncResult.status === "success") {
-                        console.log("✅ 资产同步完成");
-                    } else {
-                        console.warn("⚠️ 资产同步失败:", syncResult.msg);
-                    }
-                } catch (e) {
-                    console.warn("⚠️ 资产同步异常:", e);
+            console.log("🔄 正在同步全平台资产...");
+            try {
+                const syncRes = await fetch('/api/sync_all', {
+                    method: 'POST',
+                    headers: headers
+                });
+                const syncResult = await syncRes.json();
+                if (syncResult.status === "success") {
+                    console.log("✅ 资产同步完成");
+                } else {
+                    console.warn("⚠️ 资产同步失败:", syncResult.msg);
                 }
+            } catch (e) {
+                console.warn("⚠️ 资产同步异常:", e);
             }
 
             // 📊 再读取审计数据
@@ -627,37 +625,36 @@
                 return;
             }
 
-            console.log(`🚀 检测到新数据 [${d.update_at}]，正在更新视图...`);
+            console.log(`🚀 检测到新数据 [${d.update_at}]，正在刷新页面...`);
             lastUpdateAt = d.update_at;
 
-            // ✅ 调用 loadAudit() 进行无感更新，而不是直接刷新页面
-            await loadAudit();
+            // 🚀 发送飞书通知（包含增量信息）
+            try {
+                // 计算增量信息
+                const增量信息 = calculateDelta(d);
 
-            // 🚀 发送飞书通知（仅手动刷新时发送）
-            if (showLoading) {
-                try {
-                    // 计算增量信息
-                    const增量信息 = calculateDelta(d);
-
-                    await fetch('/api/notify_refresh', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...headers
-                        },
-                        body: JSON.stringify({
-                            update_at: d.update_at,
-                            total_investment: d.summary.total_investment,
-                            current_profit: d.summary.current_profit,
-                            expected_profit: d.summary.expected_profit,
-                            realized_cash: d.summary.realized_cash,
-                            details: 增量信息
-                        })
-                    });
-                } catch (e) {
-                    console.warn("📡 飞书通知发送失败:", e);
-                }
+                await fetch('/api/notify_refresh', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...headers
+                    },
+                    body: JSON.stringify({
+                        update_at: d.update_at,
+                        total_investment: d.summary.total_investment,
+                        current_profit: d.summary.current_profit,
+                        expected_profit: d.summary.expected_profit,
+                        realized_cash: d.summary.realized_cash,
+                        details: 增量信息
+                    })
+                });
+                console.log("📡 飞书通知已发送");
+            } catch (e) {
+                console.warn("📡 飞书通知发送失败:", e);
             }
+
+            // 🔄 刷新页面（让用户看到最新数据）
+            setTimeout(() => location.reload(), 1000);
 
         } catch (e) {
             console.warn("📡 刷新失败:", e);
@@ -668,15 +665,18 @@
     }
 
     // 🚀 初始化母舰控制台
+    let isFirstLoad = true; // 🆕 标记是否首次加载
+
     window.onload = () => {
-        // 进页面先加载一次数据（不刷新页面，只更新内容）
+        // 进页面先加载一次数据（首次加载：不同步、不发通知）
         loadAudit();
+        isFirstLoad = false; // 标记首次加载完成
 
-        // ⏰ 定时刷新：每 6 小时检查一次数据更新
+        // ⏰ 定时刷新：每 6 小时自动同步并刷新
         // 6 小时 = 6 * 60 * 60 * 1000 = 21600000ms
-        setInterval(() => refreshAuditData(false), 21600000);
+        setInterval(() => refreshAuditData(true), 21600000);
 
-        console.log("📊 审计看板已启动，每 6 小时自动检查数据更新");
+        console.log("📊 审计看板已启动，每 6 小时自动同步并刷新");
     };
     </script>
 </body>
