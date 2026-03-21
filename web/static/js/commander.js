@@ -91,6 +91,11 @@ async function refreshDashboardData() {
                         <div style="font-size:12px; color:${starColor}; margin-top:4px;">
                             <span>⭐ Steam 好评: ${h.rating}</span>
                         </div>
+                        <div style="font-size:11px; color:#8b949e; margin-top:2px; line-height:1.4;">
+                            ${h.steam_realtime && h.steam_realtime.positive_rate ? `
+                                <span style="color:#ffcc00;">⭐</span> 实时：${h.steam_realtime.positive_rate} ${h.steam_realtime.positive_detail || ''}
+                            ` : ''}
+                        </div>
                     </td>
                     <td>${h.sk_price}</td>
                     <td style="color:#58a6ff; font-family:monospace; font-size:12px;">${h.py_price}</td>

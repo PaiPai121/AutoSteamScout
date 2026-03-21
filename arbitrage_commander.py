@@ -335,12 +335,47 @@ class ArbitrageCommander:
         elif audit_result == "ENTITY_ERROR":
             status_text = "❌ 实体不符"
 
+        # --- 6. [新增] 对正收益商品获取实时 Steam 数据 + 熔断判断 ---
+        steam_realtime_data = None
+        if audit_result == "MATCH":
+            # 计算净利润
+            net_profit = (py_price * 0.97) - sk_price
+            # 只有正收益才获取实时数据
+            if net_profit >= self.min_profit:
+                print(f"🔍 [实时数据] 正在获取 {sk_name} 的 Steam 实时数据...")
+                try:
+                    # 调用 sonkwo 的 fetch_steam_data 方法
+                    steam_realtime_data = await self.sonkwo.fetch_steam_data(sk_name)
+                    if steam_realtime_data:
+                        realtime_rate = steam_realtime_data.get('positive_rate', '')
+                        print(f"✅ 获取成功：好评率={realtime_rate}, "
+                              f"玩家数={steam_realtime_data.get('total_players', 'N/A')}")
+                        
+                        # --- [关键修复] 实时好评率参与熔断判断 ---
+                        if realtime_rate:
+                            # 提取百分比数字
+                            rate_match = re.search(r'(\d+)%', realtime_rate)
+                            if rate_match:
+                                realtime_rating_val = int(rate_match.group(1))
+                                # 如果实时好评率低于阈值，拦截
+                                if realtime_rating_val < config.AUDIT_CONFIG["MIN_SCORE"]:
+                                    print(f"🗑️ [实时差评熔断] {sk_name} (实时好评率:{realtime_rating_val}% < {config.AUDIT_CONFIG['MIN_SCORE']}%)，已拦截。")
+                                    status_text = f"❌ 实时差评 ({realtime_rating_val}%)"
+                                    profit_str = "---"
+                                    current_roi = "0%"
+                                    steam_realtime_data = None  # 清除数据，避免显示
+                                    net_profit = 0  # 重置利润
+                except Exception as e:
+                    print(f"⚠️ 实时数据获取失败：{e}")
+                    steam_realtime_data = None
+
         # 1. 构造友好的简短评价
         if isinstance(rating, int):
             display_rating = f"{rating}%"
+        elif steam_realtime_data and steam_realtime_data.get('positive_rate'):
+            # 使用实时好评率
+            display_rating = f"{steam_realtime_data['positive_rate']} (实时)"
         else:
-            # 如果是 AI 的长篇大论，我们只在 Web 评价栏显示“待核实”或“需手动”
-            # 而把那一大串理由留在 log_entry['reason'] 供鼠标悬停查看
             display_rating = "🔍 待核实" if "识别弃权" in str(rating) else "⚠️ 审计跳过"
         # 构造完整 log_entry，确保包含 'profit' 等所有字段防止前端 KeyError
         log_entry = {
@@ -353,7 +388,9 @@ class ArbitrageCommander:
             "status": status_text,
             "url": sk_item.get('url', 'https://www.sonkwo.cn'),
             "reason": audit_reason,
-            "roi": current_roi
+            "roi": current_roi,
+            # --- [新增] 实时 Steam 数据 ---
+            "steam_realtime": steam_realtime_data
         }
 
         await self.update_result(log_entry)

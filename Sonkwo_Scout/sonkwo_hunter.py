@@ -96,10 +96,10 @@ class SonkwoCNMonitor(SonkwoScout):
             url = f"https://www.sonkwo.cn/store/search?key_type=steam_key&price_status={status}&page={page}"
         print(f"📡 [底层强攻] 目标: {keyword} | 深度: 第 {page} 页")
         try:
-            await self.page.goto(url, wait_until="networkidle")
+            await self.page.goto(url, wait_until="domcontentloaded", timeout=120000)
             # 💡 这里增加一个“死等”：确保列表真的出来了
             try:
-                await self.page.wait_for_selector(".SKC-search-result-item", timeout=3000)
+                await self.page.wait_for_selector(".SKC-search-result-item", timeout=60000)
             except:
                 print(f"📭 [情报] {keyword} 第 {page} 页无结果，停止深挖。")
                 return []
@@ -267,18 +267,23 @@ class SonkwoCNMonitor(SonkwoScout):
                 # 逻辑 A：通用扫描指令 's'
                 elif cmd == "s" or cmd == "scan":
                     state = await self.get_current_state()
-                    
+
                     if "DETAIL" in state:
                         # 1. 如果在详情页，执行深度数据提取
                         await self.action_scan_detail()
-                    
+
                     elif "CONFIRM" in state:
                         # 2. 如果在结算页，先做【风险评估】，再做【订单核对】
                         # 自动调用你想要的两个函数
-                        await self.action_check_region_risk() 
+                        await self.action_check_region_risk()
                         await self.action_scan_confirm()
                     else:
                         print("💡 当前页面无需扫描，若需看列表请用 search。")
+
+                # 3.5 详细情报：info 指令查询指定游戏的 Steam 数据
+                elif cmd.startswith("info ") or cmd.startswith("detail "):
+                    keyword = cmd.split(maxsplit=1)[1]
+                    await self.action_detail_info(keyword)
 
                 # 逻辑 B：通用动作指令 'buy' 或 'submit'
                 elif cmd == "buy" or cmd == "submit":
@@ -295,7 +300,7 @@ class SonkwoCNMonitor(SonkwoScout):
                     else:
                         print("❌ 当前状态无法执行购买/提交动作。")
                 else:
-                    print("❓ 未知指令。可用指令：search [游戏名] [页码] | 数字索引 | s (扫描) | buy/submit (购买) | shot (调试)")
+                    print("❓ 未知指令。可用指令：search [游戏名] [页码] | 数字索引 | s (扫描) | info (详细情报) | buy/submit (购买) | shot (调试)")
         finally:
             await self.stop()
     async def action_scan_detail(self):
@@ -330,6 +335,240 @@ class SonkwoCNMonitor(SonkwoScout):
             
         except Exception as e:
             print(f"🚨 详情页解析发生错误: {e}")
+
+
+
+    async def fetch_steam_data(self, keyword):
+        """
+        [核心方法] 获取指定游戏的 Steam 实时数据
+        复用：get_search_results + 点击进入详情
+        返回：{positive_rate, positive_detail, avg_playtime, total_players, ...}
+        """
+        try:
+            # 1. 搜索游戏
+            results = await self.get_search_results(keyword, page=1, status="lowest")
+            if not results:
+                return None
+            
+            # 2. 找到最匹配的游戏
+            target = None
+            for r in results:
+                if keyword.lower() in r['title'].lower():
+                    target = r
+                    break
+            
+            if not target:
+                target = results[0]
+            
+            # 3. 点击进入详情页
+            new_page_future = self.context.wait_for_event("page")
+            await target['handle'].click()
+            new_page = await new_page_future
+            
+            await new_page.wait_for_load_state("domcontentloaded", timeout=120000)
+            
+            # 4. 等待数据容器加载
+            try:
+                await new_page.wait_for_selector(".sku-data-chart-container", timeout=30000)
+            except:
+                print(f"⚠️ 未找到数据容器")
+                return None
+            
+            # 5. 提取 Steam 数据
+            steam_data = {}
+            data_container = await new_page.query_selector(".sku-data-chart-container")
+            
+            if data_container:
+                cart_items = await data_container.query_selector_all(".cart-item")
+                
+                for item in cart_items:
+                    try:
+                        title_el = await item.query_selector(".card-item-title span")
+                        item_title = (await title_el.text_content()).strip() if title_el else ""
+                        
+                        value_el = await item.query_selector(".value")
+                        value = (await value_el.text_content()).strip() if value_el else ""
+                        
+                        extra_el = await item.query_selector(".extra")
+                        extra = (await extra_el.text_content()).strip() if extra_el else ""
+                        
+                        # 存储到字典
+                        if "好评率" in item_title:
+                            steam_data["positive_rate"] = value
+                            steam_data["positive_detail"] = extra
+                        elif "游戏时长" in item_title:
+                            steam_data["avg_playtime"] = value
+                        elif "玩家数" in item_title:
+                            steam_data["total_players"] = value
+                        elif "史低价格" in item_title:
+                            steam_data["steam_lowest_price"] = value
+                        elif "当前在线" in item_title:
+                            steam_data["current_online"] = extra if extra else value
+                        elif "昨日峰值" in item_title:
+                            steam_data["yesterday_peak"] = extra if extra else value
+                        elif "本月峰值" in item_title:
+                            steam_data["month_peak"] = extra if extra else value
+                    except:
+                        continue
+            
+            # 6. 关闭新标签页，返回原页面
+            await new_page.close()
+            
+            return steam_data
+            
+        except Exception as e:
+            print(f"🚨 Steam 数据获取失败：{e}")
+            return None
+
+    async def action_detail_info(self, keyword=None):
+        """
+        [详细情报] 查询指定游戏的详细信息，包括 Steam 数据
+        用法：info [游戏名] 或 detail [游戏名]
+        复用：get_search_results (搜索) + 手动点击进入详情
+        """
+        print("\n[INFO] 📋 正在获取游戏详细信息...")
+        
+        try:
+            # 1. 复用已有搜索方法（使用 status="lowest" 确保搜索包含所有游戏）
+            results = await self.get_search_results(keyword, page=1, status="lowest")
+            
+            if not results:
+                print("❌ 未找到任何游戏")
+                return
+            
+            # 2. 找到与关键词最匹配的游戏
+            print(f"\n🔍 寻找与 '{keyword}' 最匹配的游戏...")
+            target = None
+            for r in results:
+                if keyword.lower() in r['title'].lower():
+                    target = r
+                    print(f"   ✅ 匹配成功：{r['title']}")
+                    break
+            
+            if not target:
+                # 如果没有精确匹配，使用第一个结果
+                target = results[0]
+                print(f"   ⚠️ 未找到精确匹配，使用第一个结果：{target['title']}")
+            
+            print(f"\n🎯 目标游戏：{target['title']}")
+            
+            # 3. 点击进入详情页（复用点击逻辑，但需要处理新标签页）
+            print(f"\n🚀 正在点击进入详情页...")
+            new_page_future = self.context.wait_for_event("page")
+            await target['handle'].click()
+            new_page = await new_page_future
+            
+            print(f"   ✅ 新标签页已打开")
+            await new_page.wait_for_load_state("domcontentloaded", timeout=120000)
+            
+            # 4. 等待数据容器加载
+            try:
+                await new_page.wait_for_selector(".sku-data-chart-container", timeout=30000)
+                print("   ✅ 成功进入详情页，找到数据容器")
+            except:
+                print(f"   ⚠️ 未找到数据容器，当前 URL: {new_page.url}")
+            
+            # 5. 提取 Steam 数据
+            print("\n" + "="*60)
+            print("📊 杉果详情页 Steam 数据提取")
+            print("="*60)
+            
+            steam_data = {}
+            data_container = await new_page.query_selector(".sku-data-chart-container")
+            
+            if data_container:
+                cart_items = await data_container.query_selector_all(".cart-item")
+                
+                for i, item in enumerate(cart_items):
+                    try:
+                        title_el = await item.query_selector(".card-item-title span")
+                        item_title = (await title_el.text_content()).strip() if title_el else "N/A"
+                        
+                        value_el = await item.query_selector(".value")
+                        value = (await value_el.text_content()).strip() if value_el else "N/A"
+                        
+                        extra_el = await item.query_selector(".extra")
+                        extra = (await extra_el.text_content()).strip() if extra_el else ""
+                        
+                        print(f"\n   [{i+1}] {item_title}")
+                        print(f"       数值：{value}")
+                        if extra:
+                            print(f"       备注：{extra}")
+                        
+                        # 存储到字典
+                        if "好评率" in item_title:
+                            steam_data["positive_rate"] = value
+                            steam_data["positive_detail"] = extra
+                        elif "游戏时长" in item_title:
+                            steam_data["avg_playtime"] = value
+                        elif "玩家数" in item_title:
+                            steam_data["total_players"] = value
+                        elif "史低价格" in item_title:
+                            steam_data["steam_lowest_price"] = value
+                        elif "当前在线" in item_title:
+                            steam_data["current_online"] = extra if extra else value
+                        elif "昨日峰值" in item_title:
+                            steam_data["yesterday_peak"] = extra if extra else value
+                        elif "本月峰值" in item_title:
+                            steam_data["month_peak"] = extra if extra else value
+                    except:
+                        continue
+                
+                # 打印摘要
+                print("\n" + "="*60)
+                print("📋 Steam 数据摘要")
+                print("="*60)
+                if steam_data.get("steam_lowest_price"):
+                    print(f"   💰 Steam 史低：{steam_data['steam_lowest_price']}")
+                if steam_data.get("positive_rate"):
+                    detail = f" ({steam_data['positive_detail']})" if steam_data.get('positive_detail') else ""
+                    print(f"   ⭐ Steam 好评率：{steam_data['positive_rate']}{detail}")
+                if steam_data.get("avg_playtime"):
+                    print(f"   ⏱️ 平均游戏时长：{steam_data['avg_playtime']}")
+                if steam_data.get("total_players"):
+                    print(f"   👥 累计玩家数：{steam_data['total_players']}")
+                if steam_data.get("current_online"):
+                    print(f"   🌐 当前在线：{steam_data['current_online']}")
+                if steam_data.get("yesterday_peak"):
+                    print(f"   📈 昨日峰值：{steam_data['yesterday_peak']}")
+                if steam_data.get("month_peak"):
+                    print(f"   📊 本月峰值：{steam_data['month_peak']}")
+            else:
+                print("❌ 未找到 Steam 数据容器，该游戏可能无数据")
+            
+            # 6. 提取基础信息（复用 action_scan_detail 的部分逻辑）
+            print("\n" + "="*60)
+            print("📦 基础游戏信息")
+            print("="*60)
+            
+            # 游戏名称
+            title_el = await new_page.query_selector(".sku-cn-name")
+            game_title = (await title_el.text_content()).strip() if title_el else target['title']
+            print(f"🎮 游戏名称：{game_title}")
+            
+            # 价格
+            price_container = await new_page.query_selector(".sku-price-info-box")
+            if price_container:
+                coupon_price_el = await price_container.query_selector(".coupon_price")
+                sale_price_el = await price_container.query_selector(".SKC-sale-price")
+                coupon_price = (await coupon_price_el.text_content()).strip() if coupon_price_el else "N/A"
+                sale_price = (await sale_price_el.text_content()).strip() if sale_price_el else "N/A"
+                print(f"💰 杉果券后价：{coupon_price}")
+                print(f"💵 杉果售价：{sale_price}")
+            
+            # 库存状态
+            stock_el = await new_page.query_selector(".SKC-sku-status")
+            if stock_el:
+                stock_status = (await stock_el.text_content()).strip()
+                print(f"📦 库存：{stock_status}")
+            else:
+                print(f"📦 库存：✅ 有货")
+            
+            print("="*60)
+            
+        except Exception as e:
+            print(f"🚨 详情查询发生错误：{e}")
+
     async def action_check_region_risk(self):
         """[风险判定] 检查 HK 环境买 CN 商品的风险"""
         print("\n[SECURITY] 🛡️ 区域风险评估...")
