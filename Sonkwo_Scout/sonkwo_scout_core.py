@@ -25,7 +25,13 @@ class SonkwoScout:
         self.context = await self.playwright.chromium.launch_persistent_context(
             self.user_data_dir,
             headless=self.headless,
-            args=["--disable-blink-features=AutomationControlled"]
+            viewport={'width': 1920, 'height': 1080}, # 模拟 1080P 显示器
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox"
+            ]
         )
         
         # 3. 获取或创建页面

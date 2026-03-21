@@ -95,15 +95,15 @@ class SonkwoCNMonitor(SonkwoScout):
             await self.page.goto(url, wait_until="networkidle")
             # 💡 这里增加一个“死等”：确保列表真的出来了
             try:
-                await self.page.wait_for_selector(".sku-list-item", timeout=3000)
+                await self.page.wait_for_selector(".SKC-search-result-item", timeout=3000)
             except:
                 print(f"📭 [情报] {keyword} 第 {page} 页无结果，停止深挖。")
                 return []
             
-            items = await self.page.query_selector_all(".sku-list-item")
+            items = await self.page.query_selector_all(".SKC-search-result-item")
             results = []
             for i, item in enumerate(items, 1):
-                t_el = await item.query_selector(".title")
+                t_el = await item.query_selector(".sku-name")
                 p_el = await item.query_selector(".SKC-sale-price") # 💡 抓取真实价格
                 a_el = await item.query_selector("a.listed-game-block") # 💡 抓取真实链接
                 
@@ -125,6 +125,7 @@ class SonkwoCNMonitor(SonkwoScout):
             # 💡 关键：只要搜到结果，直接返回，不再往下走任何“自适应导航”
             return results 
         except:
+            print(f"🚨 搜索异常: 无法获取 {keyword} 第 {page} 页结果。")
             return []
 
     async def click_item(self, index, current_list):
@@ -149,19 +150,19 @@ class SonkwoCNMonitor(SonkwoScout):
         
         try:
            # 2. 关键：等待列表加载。只要这个出来了，就说明“有货”
-            await self.page.wait_for_selector(".sku-list-item", timeout=5000)
+            await self.page.wait_for_selector(".SKC-search-result-item", timeout=5000)
             
             # 3. 抓取当前所有可见的游戏卡片
-            items = await self.page.query_selector_all(".sku-list-item")
+            items = await self.page.query_selector_all(".SKC-search-result-item")
             
             print(f"\n📡 侦察报告：在当前页面发现 {len(items)} 个匹配目标：")
             print("-" * 60)
             
             for i, item in enumerate(items, 1):
                 # 适配你提供的最新 HTML 结构
-                t_el = await item.query_selector(".title")
+                t_el = await item.query_selector(".sku-name")
                 p_el = await item.query_selector(".SKC-sale-price")
-                lowest_tag = await item.query_selector(".lowest")
+                lowest_tag = await item.query_selector(".SKC-sku-label.lowest")
                 
                 if t_el and p_el:
                     title = (await t_el.text_content()).strip()
@@ -180,6 +181,37 @@ class SonkwoCNMonitor(SonkwoScout):
                 print(f"📌 超时诊断：未能在时限内加载出 [史低] 结果，判定为：当前无史低。")
             else:
                 print(f"🚨 搜索异常: {e}")
+    
+    DEBUG_DIR = "blackbox/sonkwo_debug"
+    LIVE_IMG = "blackbox/sonkwo_live.png"
+    LIVE_HTML = "blackbox/sonkwo_live.html"
+
+    async def save_debug_info(self, label="shot"):
+        """📸 同时保存截图和 HTML 源码，便于深入分析"""
+        os.makedirs(self.DEBUG_DIR, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%H%M%S")
+        
+        base_path = os.path.join(self.DEBUG_DIR, f"{timestamp}_{label}")
+        img_path = f"{base_path}.png"
+        html_path = f"{base_path}.html"
+
+        try:
+            # 1. 保存截图
+            await self.page.screenshot(path=img_path)
+            await self.page.screenshot(path=self.LIVE_IMG) # 覆盖直播图
+            
+            # 2. 保存 HTML 源码
+            content = await self.page.content()
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            # 同时更新一个固定的“直播”HTML 文件方便查看
+            with open(self.LIVE_HTML, "w", encoding="utf-8") as f:
+                f.write(content)
+
+            print(f"📊 [DEBUG] 现场已封存: {label} (PNG & HTML)")
+        except Exception as e:
+            print(f"⚠️ 保存调试信息失败: {e}")
+
 
     # --- 4. 启动主循环 ---
     async def run_sonkwo(self):
@@ -195,7 +227,8 @@ class SonkwoCNMonitor(SonkwoScout):
                 cmd = cmd_raw.strip()
                 if not cmd: continue
                 if cmd == "exit": break
-
+                elif cmd in ["shot", "snap"]:
+                    await self.save_debug_info("manual")
                 # 1. 结构化搜索：支持 'search 游戏名 [页码]'
                 elif cmd.startswith("search ") or cmd.startswith("scan "):
                     # 💡 逻辑增强：支持识别空格后的页码
@@ -257,7 +290,8 @@ class SonkwoCNMonitor(SonkwoScout):
                         await self.action_submit_order()
                     else:
                         print("❌ 当前状态无法执行购买/提交动作。")
-
+                else:
+                    print("❓ 未知指令。可用指令：search [游戏名] [页码] | 数字索引 | s (扫描) | buy/submit (购买) | shot (调试)")
         finally:
             await self.stop()
     async def action_scan_detail(self):
@@ -281,7 +315,7 @@ class SonkwoCNMonitor(SonkwoScout):
                 final_price = "获取价格失败"
 
             # 3. 史低状态：检查是否存在 lowest 类
-            is_lowest = await self.page.query_selector(".lowest") is not None
+            is_lowest = await self.page.query_selector(".SKC-sku-label.lowest") is not None
             lowest_tag = "🔥 [官方认证史低]" if is_lowest else "⚠️ [非史低]"
 
             print("-" * 50)

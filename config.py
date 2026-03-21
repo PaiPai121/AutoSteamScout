@@ -5,8 +5,8 @@ import os
 # 这行代码会自动获取 config.py 所在的文件夹路径
 PROJECT_ROOT = Path(__file__).resolve().parent
 # --- 资源与调试控制 ---
-DEBUG_MODE = True           # 总开关
-ENABLE_SCREENSHOTS = True   # 截图开关（建议默认关闭，爆内存元凶）
+DEBUG_MODE = False           # 总开关
+ENABLE_SCREENSHOTS = False   # 截图开关（建议默认关闭，爆内存元凶）
 SINGLE_PROCESS_MODE = True    # 强制 Chromium 单进程（节省内存神器）
 
 # --- 财务费率配置 ---
@@ -43,7 +43,7 @@ SCOUT_CONFIG = {
         "adventure", "indie", "capcom", "bandai"
     ],
     # 💡 [新增]：单任务扫描深度 (页数)
-    "MAX_PAGES_PER_TASK": 3,
+    "MAX_PAGES_PER_TASK": 10,
     "BASE_CYCLE_TIME": 6000,      # 基础巡航周期 (秒)
     "JITTER_RANGE": 600,          # 随机抖动范围 (秒)，即基础值 ±600s
 }
