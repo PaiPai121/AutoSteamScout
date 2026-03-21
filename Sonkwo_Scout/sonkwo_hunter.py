@@ -344,8 +344,11 @@ class SonkwoCNMonitor(SonkwoScout):
         复用：get_search_results + 点击进入详情
         返回：{positive_rate, positive_detail, avg_playtime, total_players, ...}
         """
+        print(f"📦 [FetchSteamData] 开始获取：{keyword}")
+        print(f"📦 [FetchSteamData] 当前页面数：{len(self.context.pages)}")
         try:
             # 1. 搜索游戏
+            print(f"🔍 [FetchSteamData] Step1: 搜索游戏...")
             results = await self.get_search_results(keyword, page=1, status="lowest")
             if not results:
                 return None
@@ -364,8 +367,11 @@ class SonkwoCNMonitor(SonkwoScout):
             new_page_future = self.context.wait_for_event("page")
             await target['handle'].click()
             new_page = await new_page_future
+            print(f"📦 [FetchSteamData] 新标签页已打开，页面数：{len(self.context.pages)}")
+            print(f"🆕 [FetchSteamData] 新页面 URL: {new_page.url[:80]}")
             
             await new_page.wait_for_load_state("domcontentloaded", timeout=120000)
+            print(f"✅ [FetchSteamData] 页面加载完成")
             
             # 4. 等待数据容器加载
             try:
@@ -417,8 +423,23 @@ class SonkwoCNMonitor(SonkwoScout):
             return steam_data
             
         except Exception as e:
-            print(f"🚨 Steam 数据获取失败：{e}")
+            print(f"🚨 [FetchSteamData] 异常：{e}")
+            print(f"🚨 [FetchSteamData] 当前页面数：{len(self.context.pages)}")
+            import traceback
+            traceback.print_exc()
             return None
+
+        finally:
+            # 确保关闭所有额外标签页，防止页面泄漏
+            print(f"🧹 [FetchSteamData] Finally: 清理标签页...")
+            try:
+                if 'new_page' in locals() and new_page and not new_page.is_closed():
+                    print(f"🧹 [FetchSteamData] 发现未关闭的标签页，正在关闭...")
+                    await new_page.close()
+                    print(f"✅ [FetchSteamData] 已清理")
+            except Exception as e:
+                print(f"⚠️ [FetchSteamData] Finally 清理失败：{e}")
+                pass
 
     async def action_detail_info(self, keyword=None):
         """
