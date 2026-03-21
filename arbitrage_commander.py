@@ -326,7 +326,7 @@ class ArbitrageCommander:
         status_text, profit_str, current_roi = "🛑 审核未通过", "---", "0%"
         
         if audit_result == "MATCH":
-            net_profit = (py_price * 0.97) - sk_price
+            net_profit = (py_price * config.PAYOUT_RATE) - sk_price
             profit_str = f"¥{net_profit:.2f}"
             current_roi = f"{(net_profit / sk_price * 100):.1f}%" if sk_price > 0 else "0%"
             status_text = "✅ 匹配成功" if net_profit > self.min_profit else "📉 利润微薄"
@@ -339,7 +339,7 @@ class ArbitrageCommander:
         steam_realtime_data = None
         if audit_result == "MATCH":
             # 计算净利润
-            net_profit = (py_price * 0.97) - sk_price
+            net_profit = (py_price * config.PAYOUT_RATE) - sk_price
             # 只有正收益才获取实时数据
             if net_profit >= self.min_profit:
                 print(f"🔍 [实时数据] 正在获取 {sk_name} 的 Steam 实时数据...")
@@ -386,7 +386,7 @@ class ArbitrageCommander:
             "py_price": f"¥{py_price_display}",
             "profit": profit_str,
             "status": status_text,
-            "url": sk_item.get('url', 'https://www.sonkwo.cn'),
+            "url": f"https://www.sonkwo.cn/store/search?keyword={sk_name}&key_type=steam_key",
             "reason": audit_reason,
             "roi": current_roi,
             # --- [新增] 实时 Steam 数据 ---
