@@ -12,7 +12,7 @@ SINGLE_PROCESS_MODE = True    # 强制 Chromium 单进程（节省内存神器�
 # --- 财务费率配置 ---
 # SteamPY 实际到手费率（扣除 3% 手续费后为 0.97）
 # 如果未来平台费率变动，只需修改此处
-PAYOUT_RATE = 0.97
+PAYOUT_RATE = 0.96 # 现在实际上是4%，因为提现还要扣1%
 
 # 专门用于控制后台定时触发 get_audit_stats 的频率
 RECON_INTERVAL = 3600 * 6
