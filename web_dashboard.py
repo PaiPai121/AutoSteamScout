@@ -332,7 +332,9 @@ async def continuous_cruise():
                 for mode in target_modes: # 🚀 第一层：切换 史低/超史低
                     for task_keyword in search_tasks:
                         # 💡 新增：内层页码循环
-                        for p in range(1, max_pages + 1):
+                        real_max_page = max_pages + 1
+                        if (task_keyword == "") : real_max_page = 2*real_max_page
+                        for p in range(1, real_max_page):
                             # 💡 每一页开始前拿锁，扫完这一页自动放锁
                             async with global_commander.lock:
                                 mode_tag = "超史低" if mode == "new_lowest" else "史低"

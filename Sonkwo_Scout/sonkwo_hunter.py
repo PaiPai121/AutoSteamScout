@@ -88,8 +88,12 @@ class SonkwoCNMonitor(SonkwoScout):
         """
         # 💡 核心修改：在 URL 结尾拼接 page 参数
         # url = f"https://www.sonkwo.cn/store/search?keyword={keyword}&key_type=steam_key&page={page}"
-        url = f"https://www.sonkwo.cn/store/search?keyword={keyword}&key_type=steam_key&price_status={status}&page={page}"
-        
+        # url = f"https://www.sonkwo.cn/store/search?keyword={keyword}&key_type=steam_key&price_status={status}&page={page}"
+        if keyword:
+            url = f"https://www.sonkwo.cn/store/search?keyword={keyword}&key_type=steam_key&price_status={status}&page={page}"
+        else:
+            # 这样生成的 URL 才是杉果标准的“全场折扣列表”
+            url = f"https://www.sonkwo.cn/store/search?key_type=steam_key&price_status={status}&page={page}"
         print(f"📡 [底层强攻] 目标: {keyword} | 深度: 第 {page} 页")
         try:
             await self.page.goto(url, wait_until="networkidle")
