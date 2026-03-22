@@ -16,16 +16,19 @@ class SyncManager:
         # --- 阶段 A: 杉果订单同步 (使用杉果自己的上下文) ---
         sync_page = await self.commander.sonkwo.context.new_page()
         
+        sonkwo_success = True  # 假设成功
         try:
             # --- 阶段 A: 杉果订单同步 ---
             print("📍 [1/2] 正在提取杉果采购成本...")
-            # await self.sonkwo.action_fetch_ledger(sync_page)
             is_ready = await self.sonkwo.action_verify_and_goto_orders(sync_page)
             if is_ready:
                 print("✅ 杉果着陆成功，开始全息抓取...")
                 await self.sonkwo.action_fetch_ledger(sync_page)
             else:
-                print("❌ 杉果着陆失败（可能登录失效或网络波动），跳过此步")
+                print("❌ 杉果着陆失败（登录失效或网络波动）")
+                print("💡 请运行：python Sonkwo_Scout/save_sonkwo_session.py 重新登录")
+                sonkwo_success = False
+                return {"status": "error", "msg": "杉果登录失效，请重新登录"}
         except Exception as e:
             print(f"❌ 杉果同步异常: {e}")
         finally:
@@ -43,14 +46,20 @@ class SyncManager:
             if is_py_ready:
                 print("✅ SteamPY 着陆成功，开始抓取货架...")
                 await self.commander.steampy_center.action_fetch_seller_ledger(py_page)
-                print("✨ 同步任务圆满完成！")
+                # 检查两个阶段都成功
+                if sonkwo_success:
+                    print("✨ 同步任务圆满完成！")
+                else:
+                    print("⚠️ 同步任务完成（杉果阶段失败，SteamPy 阶段成功）")
                 
                 # --- 阶段 C: 立即刷新财务快照 (可选) ---
                 # 为了让你点完按钮立刻能在网页看到变化，建议捅一下重算
                 from Finance_Center.auditor import FinanceAuditor
                 await FinanceAuditor().run_detailed_audit(silent=True)
                 
-                return {"status": "success", "msg": "同步完成"}
+                status = "success" if sonkwo_success else "partial"
+                msg = "同步完成" if sonkwo_success else "部分成功（杉果订单同步失败）"
+                return {"status": status, "msg": msg}
             else:
                 print("❌ SteamPY 同步失败：无法进入卖家后台")
                 return {"status": "error", "msg": "SteamPY 登录失效"}

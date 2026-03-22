@@ -33,12 +33,26 @@ class FinanceService:
             json.dump(list(self.blacklist), f, ensure_ascii=False, indent=2)
 
     async def action_verify_and_goto_orders(self, page):
-        """[深度审计] 导航至杉果订单列表页"""
+        """[深度审计] 导航至杉果订单列表页（含登录状态检查）"""
         try:
             print("🔍 正在验证并导航至订单列表页...")
             await page.goto("https://www.sonkwo.hk/setting/orders", wait_until="networkidle", timeout=30000)
-            print("✅ 已到达订单列表页")
-            return True
+            
+            # 🚨 检查登录状态：如果页面包含登录弹窗，说明 Session 已过期
+            login_popup = await page.query_selector(".SK-login-popup, .overlayfixed:has(.SK-login)")
+            if login_popup:
+                print("❌ [登录失效] 检测到登录弹窗，杉果 Session 已过期")
+                print("💡 解决方案：请运行 python Sonkwo_Scout/save_sonkwo_session.py 重新登录")
+                return False
+            
+            # 检查是否到达订单列表页
+            order_list = await page.query_selector(".SK-user-center-order-container, .self-order-item")
+            if order_list:
+                print("✅ 已到达订单列表页")
+                return True
+            else:
+                print("⚠️ 未找到订单列表元素，可能页面结构变化")
+                return False
         except Exception as e:
             print(f"❌ [ERROR] 导航失败：{str(e)}")
             return False
@@ -406,3 +420,22 @@ class FinanceService:
             print(f"💾 HTML 源码已保存：{shot_path}")
         except Exception as e:
             print(f"❌ 存档失败：{e}")
+
+
+# ==========================================
+# 🚀 测试入口
+# ==========================================
+if __name__ == "__main__":
+    async def test_interactive():
+        from Sonkwo_Scout.sonkwo_hunter import SonkwoCNMonitor
+        
+        sonkwo = SonkwoCNMonitor(headless=False)
+        await sonkwo.start()
+        
+        finance = FinanceService(sonkwo.context)
+        await finance.enter_interactive_mode()
+        
+        await sonkwo.stop()
+        print("\n✅ 测试完成")
+    
+    asyncio.run(test_interactive())
