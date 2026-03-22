@@ -212,7 +212,7 @@ class FinanceService:
             
             while True:
                 print(f"\n📄 [母舰巡航] 第 {page_num} 页扫描中...")
-                await page.wait_for_selector(".self-order-item", timeout=10000)
+                await page.wait_for_selector(".self-order-item", timeout=50000)
                 
                 # 🚀 关键：获取当前页面所有订单的数量
                 order_count = await page.locator(".self-order-item").count()
@@ -266,7 +266,7 @@ class FinanceService:
                         print(f"      🔙 返回第 {page_num} 页：{target_list_url}")
                         await page.goto(target_list_url, wait_until="networkidle")
                         # 重新等待元素加载，确保下一轮 i 的定位准确
-                        await page.wait_for_selector(".self-order-item", timeout=10000)
+                        await page.wait_for_selector(".self-order-item", timeout=50000)
                         
                         # 🛡️ 反反爬虫：随机延迟（模拟人类行为）
                         import random
