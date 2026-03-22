@@ -1108,10 +1108,14 @@ async def audit_watchdog():
         # 每小时执行一次
         await asyncio.sleep(config.RECON_INTERVAL)
 
+@app.on_event("startup")
 async def startup():
     # 启动后台常驻任务
+    logger.info("🚀 [巡航] 全场史低巡航启动...")
+    logger.info("🕒 [后台指令] 审计看门狗启动...")
     asyncio.create_task(continuous_cruise())
     asyncio.create_task(audit_watchdog())
+    logger.info("✅ 所有系统组件启动成功，进入待命状态。")
 
 from fastapi.responses import FileResponse
 
