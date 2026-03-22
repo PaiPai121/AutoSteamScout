@@ -235,13 +235,13 @@ class AutoLister:
         """
         print(f"\n{'='*60}")
         print(f"🧮 [Step 2] 计算最优定价")
-        print(f"   市场最低价：¥{market_data.SKC-sku-label.lowest_price}")
+        print(f"   市场最低价：¥{market_data.lowest_price}")
         print(f"   采购成本：¥{purchase_cost}")
         print(f"   自动 undercut：¥{self.UNDERCUT_AMOUNT}")
 
         # 策略：比市场最低价再低一点，确保竞争力
         target_price = max(
-            market_data.SKC-sku-label.lowest_price - self.UNDERCUT_AMOUNT,
+            market_data.lowest_price - self.UNDERCUT_AMOUNT,
             0.01  # 确保价格为正
         )
 
