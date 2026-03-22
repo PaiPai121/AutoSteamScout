@@ -891,22 +891,51 @@ async def mark_damaged(request: Request, token: str = Depends(verify_token)):
 async def notify_refresh(request: Request, token: str = Depends(verify_token)):
     """
     手动刷新审计数据后发送飞书通知（包含增量信息）
+    🚀 修改：先执行一键同步，再刷新数据，最后发送通知
     """
     global global_commander
 
     try:
-        data = await request.json()
-        update_at = data.get("update_at", "")
-        total_investment = data.get("total_investment", 0)
-        current_profit = data.get("current_profit", 0)
-        expected_profit = data.get("expected_profit", 0)
-        realized_cash = data.get("realized_cash", 0)
+        # ============================================
+        # 🚀 Step 1: 先执行一键同步（确保数据最新）
+        # ============================================
+        print("🔄 [刷新通知] 正在执行跨平台同步...")
+        if global_commander:
+            async with global_commander.lock:
+                try:
+                    await asyncio.sleep(2)  # 💡 给系统一点缓冲时间（复用 sync_all 的逻辑）
+                    from Finance_Center.sync_manager import SyncManager
+                    manager = SyncManager(global_commander)
+                    sync_result = await manager.run_full_sync()
+                    print(f"✅ [刷新通知] 同步完成：{sync_result.get('msg', '')}")
+                    del manager
+                    import gc
+                    gc.collect()
+                except Exception as e:
+                    print(f"⚠️ [刷新通知] 同步失败：{e}")
+                    # 同步失败不影响后续流程，继续执行
+
+        # ============================================
+        # 🚀 Step 2: 刷新审计数据
+        # ============================================
+        print("📊 [刷新通知] 正在刷新审计数据...")
+        audit_data = await get_audit_stats(token)
+
+        # ============================================
+        # 🚀 Step 3: 提取数据并构建通知
+        # ============================================
+        update_at = audit_data.get("update_at", "")
+        summary = audit_data.get("summary", {})
+        total_investment = summary.get("total_investment", 0)
+        current_profit = summary.get("current_profit", 0)
+        expected_profit = summary.get("expected_profit", 0)
+        realized_cash = summary.get("realized_cash", 0)
 
         # 计算回本进度
         recovery_rate = (realized_cash / total_investment * 100) if total_investment > 0 else 0
 
         # 🚀 获取增量信息（与上次刷新对比）
-        details = data.get("details", {})
+        details = audit_data.get("details", {})
         new_purchases = details.get("new_purchases", [])  # 新增采购
         new_listings = details.get("new_listings", [])    # 新增上架
         new_sales = details.get("new_sales", [])          # 新卖出
@@ -994,21 +1023,91 @@ async def sync_all_platforms(token: str = Depends(verify_token)):
 # --- 5. 财务自动化闹钟 ---
 
 async def audit_watchdog():
-    """⏲️ 每小时自动捅一次审计接口，确保报表刷新"""
+    """⏲️ 每小时自动触发财务对账（包含同步 + 审计 + 通知）"""
     while True:
         try:
-            # 💡 直接调用你已经写好的路由函数
-            # 因为它是 async def，所以直接 await 即可
             logger.info("🕒 [后台指令] 正在触发例行财务对账...")
-            await get_audit_stats() 
-            logger.info("✅ [后台指令] 报表已更新。")
+            
+            # ============================================
+            # 🚀 Step 1: 先执行一键同步（确保数据最新）
+            # ============================================
+            sync_status = "❌ 失败"
+            sync_msg = ""
+            if global_commander:
+                async with global_commander.lock:
+                    try:
+                        await asyncio.sleep(2)  # 给系统缓冲时间
+                        from Finance_Center.sync_manager import SyncManager
+                        manager = SyncManager(global_commander)
+                        sync_result = await manager.run_full_sync()
+                        sync_status = "✅ 成功" if sync_result.get("status") == "success" else "❌ 失败"
+                        sync_msg = sync_result.get("msg", "")
+                        logger.info(f"✅ [后台指令] 同步完成：{sync_msg}")
+                        del manager
+                        import gc
+                        gc.collect()
+                    except Exception as e:
+                        sync_status = "❌ 异常"
+                        sync_msg = str(e)
+                        logger.warning(f"⚠️ [后台指令] 同步失败：{e}")
+            
+            # ============================================
+            # 🚀 Step 2: 刷新审计数据
+            # ============================================
+            audit_status = "✅ 成功"
+            audit_msg = ""
+            try:
+                audit_data = await get_audit_stats()
+                audit_msg = f"采购：¥{audit_data['summary']['total_investment']:.2f} | 利润：¥{audit_data['summary']['current_profit']:.2f}"
+                logger.info(f"✅ [后台指令] 报表已更新：{audit_msg}")
+            except Exception as e:
+                audit_status = "❌ 异常"
+                audit_msg = str(e)
+                logger.error(f"🚨 [后台指令] 审计失败：{e}")
+            
+            # ============================================
+            # 🚀 Step 3: 发送飞书通知（详细版）
+            # ============================================
+            if global_commander and global_commander.notifier:
+                from datetime import datetime
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                content = [
+                    f"🕒 [定时财务对账] {now}",
+                    f"{'═'*50}",
+                    f"📦 数据同步：{sync_status}",
+                ]
+                
+                if sync_msg:
+                    content.append(f"   {sync_msg}")
+                
+                content.append(f"📊 审计刷新：{audit_status}")
+                
+                if audit_msg and audit_status == "✅ 成功":
+                    content.append(f"   {audit_msg}")
+                
+                # 添加同步详情
+                if sync_status == "✅ 成功" and global_commander:
+                    try:
+                        # 尝试获取同步详情（如果 SyncManager 返回了）
+                        if 'new_purchases' in dir() or hasattr(manager, 'last_sync_details'):
+                            content.append(f"{'─'*50}")
+                            content.append(f"📋 同步详情:")
+                            # 这里可以扩展获取更多详情
+                    except:
+                        pass
+                
+                content.append(f"{'═'*50}")
+                content.append(f"💡 数据已更新，请查看审计看板")
+                
+                await global_commander.notifier.send_text("\n".join(content))
+            
         except Exception as e:
-            logger.error(f"🚨 [后台指令] 审计触发失败: {e}")
+            logger.error(f"🚨 [后台指令] 审计触发失败：{e}")
         
         # 每小时执行一次
         await asyncio.sleep(config.RECON_INTERVAL)
 
-@app.on_event("startup")
 async def startup():
     # 启动后台常驻任务
     asyncio.create_task(continuous_cruise())
