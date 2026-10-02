@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AutoSteamScout · 套现控制台</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div><div class="eyebrow">AUTO STEAM SCOUT</div><h1>套现控制台</h1></div>
+    <div class="top-right"><a href="/auth">登录画面</a><span class="pill" id="status-pill">待命</span><span id="clock"></span></div>
+  </header>
+  <main>
+    <p id="scan-alert" class="scan-alert" role="status" hidden></p>
+    <section class="intro">
+      <div><h2>进货、销售与回款</h2><p>2025 年起统计。退款成功的商品不算进货，销售收入与提现到账分别核对。</p></div>
+      <span class="intro-mark">¥</span>
+    </section>
+    <section class="panel" id="finance-overview">
+      <div class="panel-head"><h2>资金总览</h2><span class="quiet">从 2025-01-01 起 · 中国时间</span></div>
+      <div class="metrics finance-metrics" aria-label="消费收入与提现总计">
+        <div class="metric"><span>杉果净消费</span><strong id="finance-purchase-spent">—</strong><small id="finance-purchase-details">原实付减退款</small></div>
+        <div class="metric"><span>SteamPy 净收入</span><strong id="finance-sale-net">—</strong><small id="finance-sale-details">普通与求购成交，已扣订单费</small></div>
+        <div class="metric"><span>提现扣款合计</span><strong id="finance-withdrawals">—</strong><small id="finance-withdrawal-details">SteamPy 钱包提现记录</small></div>
+        <div class="metric"><span>银行到账已核对</span><strong id="finance-bank-received">—</strong><small id="finance-bank-details">按实际到账凭据核对</small></div>
+        <div class="metric"><span>提现手续费</span><strong id="finance-withdrawal-fees">—</strong><small>钱包另行扣除的提现费</small></div>
+      </div>
+      <div class="wallet-flow" id="wallet-flow">
+        <h3>SteamPy 钱包：收入去了哪里</h3>
+        <p id="wallet-equation" class="wallet-equation">正在核对钱包收支…</p>
+        <div class="metrics wallet-metrics">
+          <div class="metric"><span>其他钱包支出</span><strong id="finance-wallet-other-debits">—</strong><small>按平台流水单列，明细见下方</small></div>
+          <div class="metric"><span>钱包可用余额</span><strong id="finance-wallet-balance">—</strong><small id="finance-wallet-balance-details">读取 SteamPy 官方余额</small></div>
+          <div class="metric"><span>余额与流水差额</span><strong id="finance-wallet-gap">—</strong><small id="finance-wallet-gap-details">与全部已同步钱包流水比较</small></div>
+        </div>
+        <p class="quiet" id="wallet-reconciliation-note"></p>
+        <details id="wallet-other-details">
+          <summary>其他钱包收支明细 <span id="wallet-other-count"></span></summary>
+          <p class="quiet">保留平台分类与关联订单号；具体用途未确认的金额单列，不自动摊入进货成本。</p>
+          <div class="table-wrap"><table><thead><tr><th>发生时间</th><th>平台分类</th><th>钱包支出</th><th>钱包入账</th><th>关联订单号</th></tr></thead><tbody id="wallet-other-rows"><tr><td colspan="5" class="empty">正在读取钱包明细…</td></tr></tbody></table></div>
+        </details>
+      </div>
+      <p class="quiet" id="finance-note">正在读取资金总计…</p>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><div class="eyebrow">ACCOUNT ORDERS</div><h2>2025 年起已有订单统计</h2></div><button id="sync-orders" class="ghost" type="button">同步已有订单</button></div>
+      <p class="quiet" id="account-order-state">正在读取账号订单…</p>
+      <p class="coverage-alert" id="account-coverage" role="status">正在核对 SteamPy 普通与求购订单、钱包入账及进货件数…</p>
+      <details id="account-summary-details"><summary>展开订单数量、成交原价及费用明细</summary>
+      <div class="metrics stats-grid" aria-label="杉果订单统计">
+        <div class="metric"><span>杉果已完成订单</span><strong id="sonkwo-orders">—</strong><small>购买订单数</small></div>
+        <div class="metric"><span>购买商品</span><strong id="sonkwo-units">—</strong><small>按订单商品数量</small></div>
+        <div class="metric"><span>杉果净消费</span><strong id="sonkwo-spent">—</strong><small>实付减去成功退款</small></div>
+        <div class="metric"><span>SteamPy 成交订单</span><strong id="steampy-sold">—</strong><small id="steampy-sold-details">普通与求购订单</small></div>
+        <div class="metric"><span>已核实成交原价</span><strong id="steampy-gross">—</strong><small>仅普通订单有独立原价</small></div>
+        <div class="metric"><span>已核实订单费用</span><strong id="steampy-fees">—</strong><small>仅普通订单有独立费用</small></div>
+        <div class="metric"><span>求购扣费后收入</span><strong id="steampy-request-net">—</strong><small>与 AK 钱包入账核对</small></div>
+        <div class="metric"><span>订单扣费后收入</span><strong id="steampy-net">—</strong><small id="steampy-net-details">另核对提现到账</small></div>
+        <div class="metric"><span>其他状态记录</span><strong id="steampy-other">—</strong><small id="steampy-other-details">平台状态待核实</small></div>
+      </div>
+      </details>
+      <p class="quiet">普通订单以成功列表和未退款状态判定成交；求购订单以平台状态 20 判定成交，并按同订单号 AK 钱包流水核对净收入。其他状态不会增加成交收入。不同订单号的同款记录不能证明使用同一激活码；平台其他状态码仍需核对。当前同步范围以顶部提示为准。</p>
+      <p class="quiet" id="account-profit-note">正在核对购买与销售订单…</p>
+      <div class="order-ledger" id="purchase-inventory">
+        <div class="panel-head"><div><div class="eyebrow">PURCHASE INVENTORY</div><h3>2025 年起杉果逐件进货与 SteamPy 成交配对</h3></div><span class="quiet" id="inventory-count">正在读取全部进货…</span></div>
+        <div class="metrics inventory-metrics" aria-label="进货商品统计">
+          <div class="metric"><span>买入商品</span><strong id="inventory-bought">—</strong><small id="inventory-products">每件购买商品单独一行</small></div>
+          <div class="metric"><span>已配对成交</span><strong id="inventory-sold">—</strong><small>普通与求购订单</small></div>
+          <div class="metric"><span>未找到对应成交</span><strong id="inventory-unsold">—</strong><small id="inventory-unsold-cost">买入成本仍单列</small></div>
+          <div class="metric"><span>价差为负的成交</span><strong id="inventory-loss">—</strong><small>逐件按扣费后收入减成本</small></div>
+          <div class="metric"><span>已售订单价差</span><strong id="inventory-spread">—</strong><small>尚未扣提现费或核对银行到账</small></div>
+        </div>
+        <p class="quiet">从 2025 年 1 月 1 日起按中国时间统计，每行代表买入的 1 件商品。同一订单的同款买入多件时，会分行并标明总件数。同款多次购买按先购先销分配成本。“未找到对应成交”表示已同步的 SteamPy 成交里没有可对应的销售；上架和库存状态仍待确认。</p>
+        <form id="inventory-form" class="ledger-toolbar">
+          <label>查看<select id="inventory-state"><option value="all">全部购买件</option><option value="unsold">未找到对应成交的购买</option><option value="loss">价差为负的件</option><option value="sold">已配对成交的件</option></select></label>
+          <label>商品或订单号<input id="inventory-query" maxlength="100" placeholder="搜索购买或卖出订单"></label>
+          <button type="submit" class="ghost">筛选</button>
+        </form>
+        <div class="table-wrap"><table class="inventory-table"><thead><tr><th>杉果商品 / 购买订单</th><th>购买时间</th><th>状态</th><th>单件成本</th><th>成交金额</th><th>订单费用</th><th>扣费后收入</th><th>单件价差</th><th>SteamPy 销售订单</th></tr></thead><tbody id="inventory-rows"><tr><td colspan="9" class="empty">正在读取进货…</td></tr></tbody></table></div>
+        <div class="ledger-paging"><span class="quiet" id="inventory-warning">尚未同步进货</span><div><button id="inventory-prev" type="button" class="ghost">上一页</button><span id="inventory-page">—</span><button id="inventory-next" type="button" class="ghost">下一页</button></div></div>
+      </div>
+      <details class="order-ledger" id="purchase-refund-details">
+        <summary>已退款商品 <span id="refund-count">—</span></summary>
+        <p class="quiet">退款商品保留核对记录，不进入进货件数或买卖成本配对。同一订单其他未退款商品仍保留。</p>
+        <div class="table-wrap"><table><thead><tr><th>商品 / 购买订单</th><th>购买时间</th><th>退款件数</th><th>已剔除金额</th><th>依据</th></tr></thead><tbody id="refund-rows"><tr><td colspan="5" class="empty">正在读取退款…</td></tr></tbody></table></div>
+      </details>
+      <div class="order-ledger">
+        <div class="panel-head"><div><div class="eyebrow">NOT COMPLETED</div><h3>SteamPy 其他状态记录</h3></div><span class="quiet" id="unconfirmed-count">正在读取…</span></div>
+        <p class="quiet">这里单列平台总订单里的状态码记录和退款单。它们不会增加成交收入；若之后有同款成功单，会显示那个不同的订单号。</p>
+        <div class="table-wrap"><table class="unconfirmed-table"><thead><tr><th>SteamPy 订单号</th><th>时间</th><th>商品</th><th>平台记录</th><th>之后的同款成功单</th></tr></thead><tbody id="unconfirmed-rows"><tr><td colspan="5" class="empty">正在读取…</td></tr></tbody></table></div>
+        <div class="ledger-paging"><span class="quiet">不同订单号不能证明同一激活码。</span><div><button id="unconfirmed-prev" type="button" class="ghost">上一页</button><span id="unconfirmed-page">—</span><button id="unconfirmed-next" type="button" class="ghost">下一页</button></div></div>
+      </div>
+      <details class="order-ledger" id="sale-match-details">
+        <summary>按 SteamPy 成功订单查看原始配对明细</summary>
+        <div class="panel-head"><div><div class="eyebrow">PURCHASE → SALE</div><h3>杉果购买与 SteamPy 销售逐笔配对</h3></div><span class="quiet" id="match-count">正在读取配对…</span></div>
+        <div class="metrics match-metrics" aria-label="购买销售配对统计">
+          <div class="metric"><span>单一来源配对</span><strong id="match-candidate">—</strong><small>按同款购买订单计入成本</small></div>
+          <div class="metric"><span>先购先销配对</span><strong id="match-fifo">—</strong><small>多个来源时依购买顺序计入成本</small></div>
+          <div class="metric"><span>未能配对</span><strong id="match-unmatched">—</strong><small>无相符购买或可用买入不足等</small></div>
+          <div class="metric"><span>已配对订单价差</span><strong id="match-spread">—</strong><small>扣除购买成本与订单费用，尚非到账利润</small></div>
+        </div>
+        <p class="quiet">先按完整商品名、官方中英文名、版本和 DLC 副标题核对；名称只有相似而缺少证据时，保留未配对。已确认同款的历史成交再按先购先销确定成本，尚未核验实际激活码。只有提现到账并核对相关费用后，才能确认套现利润。</p>
+        <label class="match-filter">配对状态<select id="match-state"><option value="all">全部成交订单</option><option value="candidate">单一来源配对</option><option value="fifo">先购先销配对</option><option value="review">未能一对一配对</option><option value="unmatched">无相符杉果购买</option></select></label>
+        <div class="table-wrap"><table class="match-table"><thead><tr><th>SteamPy 销售 / 订单号</th><th>成交时间</th><th>杉果购买 / 订单号</th><th>配对状态</th><th>买入成本</th><th>成交收入</th><th>订单费用</th><th>扣费后收入</th><th>订单价差</th><th>依据 / 待核对</th></tr></thead><tbody id="match-rows"><tr><td colspan="10" class="empty">正在读取配对…</td></tr></tbody></table></div>
+      </details>
+      <div class="order-ledger">
+        <div class="panel-head"><div><div class="eyebrow">ORDER DETAILS</div><h3>杉果购买与 SteamPy 订单收支</h3></div><span class="quiet" id="ledger-count">正在读取明细…</span></div>
+        <form id="account-ledger-form" class="ledger-toolbar">
+          <label>平台<select id="account-platform"><option value="all">全部平台</option><option value="sonkwo">杉果购买</option><option value="steampy">SteamPy 订单</option></select></label>
+          <label>订单状态<select id="account-state"><option value="all">全部</option><option value="completed_buy">有未退款商品的购买</option><option value="sold">成功成交</option><option value="not_counted">未作为有效成交</option></select></label>
+          <label>商品或订单号<input id="account-query" maxlength="100" placeholder="搜索全部已同步订单"></label>
+          <button type="submit" class="ghost">筛选</button>
+        </form>
+        <div class="table-wrap"><table><thead><tr><th>平台 / 订单号</th><th>时间</th><th>商品明细</th><th>状态</th><th>订单原件数</th><th>杉果净支出</th><th>成交收入</th><th>订单费用</th><th>扣费用后收入</th></tr></thead><tbody id="account-ledger-rows"><tr><td colspan="9" class="empty">正在读取订单…</td></tr></tbody></table></div>
+        <div class="ledger-paging"><span class="quiet">杉果净支出已减已退款商品原实付；求购成交只有可核对净收入，原价和费用显示为“—”。订单净收入尚未核对提现到账。</span><div><button id="ledger-prev" type="button" class="ghost">上一页</button><span id="ledger-page">—</span><button id="ledger-next" type="button" class="ghost">下一页</button></div></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><div class="eyebrow">PAYOUT CHECK</div><h2>SteamPy 提现与银行到账</h2></div><button id="sync-payouts" class="ghost" type="button">同步提现流水</button></div>
+      <p class="quiet" id="payout-state">正在读取提现流水…</p>
+      <div class="metrics match-metrics" aria-label="提现核对统计">
+        <div class="metric"><span>平台提现扣款</span><strong id="payout-debits">—</strong><small id="payout-count">钱包记录</small></div>
+        <div class="metric"><span>平台提现费用</span><strong id="payout-fees">—</strong><small>单独扣除的费用</small></div>
+        <div class="metric"><span>手工核对银行到账</span><strong id="payout-bank">—</strong><small>仅按录入的银行流水</small></div>
+        <div class="metric"><span>待核对到账</span><strong id="payout-pending">—</strong><small>平台扣款不代表银行已到账</small></div>
+      </div>
+      <p class="quiet">下表是 SteamPy 钱包的提现扣款流水。平台记录没有银行回单；请用真实银行流水逐笔核对，录入后会标明“手工核对”。这部分暂不分摊到具体销售订单，因此不计入已实现利润。</p>
+      <div class="table-wrap"><table class="payout-table"><thead><tr><th>平台扣款时间</th><th>提现扣款</th><th>平台提现费</th><th>银行实际到账</th><th>差额</th><th>核对状态</th><th>操作</th></tr></thead><tbody id="payout-rows"><tr><td colspan="7" class="empty">正在读取提现流水…</td></tr></tbody></table></div>
+    </section>
+    <div class="manual-heading"><div class="eyebrow">可选 · 本系统逐笔资金记录</div><p class="quiet" id="manual-ledger-help">正在读取交易记录…</p></div>
+    <section class="metrics" id="manual-metrics" aria-label="本系统逐笔资金概览">
+      <div class="metric"><span>已实现利润</span><strong id="realized-profit">—</strong><small>仅统计下方逐笔记录</small></div>
+      <div class="metric"><span>占用资金</span><strong id="capital-tied">—</strong><small>买入至回款期间</small></div>
+      <div class="metric"><span>未结持仓</span><strong id="open-positions">—</strong><small>已买入、已上架、已售出</small></div>
+      <div class="metric"><span>已售待回款</span><strong id="awaiting-payout">—</strong><small>成交后尚未到账</small></div>
+      <div class="metric"><span>累计回款</span><strong id="cash-received">—</strong><small>实际收到的金额</small></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><div class="eyebrow">AUTO CRUISE</div><h2>自动筛选与统计</h2></div><button id="toggle-cruise" class="ghost" type="button">暂停巡航</button></div>
+      <p class="quiet" id="cruise-state">正在读取巡航状态…</p>
+      <div class="metrics stats-grid" aria-label="扫描统计">
+        <div class="metric"><span>累计扫描</span><strong id="run-count">—</strong><small>含失败轮次</small></div>
+        <div class="metric"><span>独立商品</span><strong id="unique-offers">—</strong><small>按商品链接去重</small></div>
+        <div class="metric"><span>有求购且达到利润门槛</span><strong id="latest-opportunities">—</strong><small id="demand-statistics">正在核实买方需求</small></div>
+        <div class="metric"><span>按求购价估算套现利润</span><strong id="latest-estimate">—</strong><small>每款仅估 1 件；成交前需复核报价</small></div>
+      </div>
+      <div class="quiet" id="scan-trend"></div>
+    </section>
+    <section class="panel" id="discovery">
+      <div class="panel-head"><div><div class="eyebrow">DISCOVERY</div><h2>发现机会</h2></div><div class="quiet" id="fee-note"></div></div>
+      <div class="discovery-explanation">
+        <p><strong>找什么：</strong>杉果史低、新史低中可现金购买的国区 Steam Key，对比 SteamPy 国区在售挂价；按商品链接去重，每轮受页数与商品上限限制。</p>
+        <p><strong>怎么对齐：</strong>先沿原链接核对杉果详情，再对比两边全部官方中英文名、版本与内容类型。中文译名不同但官方英文名一致，可以按名称对应；只有相似或缩写的名称留待确认。展开每行“匹配依据”可看实际对齐的名称、商品编号和 Steam 标识。</p>
+        <p id="profit-rule"><strong>利润怎么算：</strong>正在读取费率和门槛…</p>
+        <p><strong>卖不卖得动：</strong>每轮读取对应商品的公开在售库存与有效求购单，分别算挂价利润和求购价利润。只有求购价扣费后也达标，才进入“有求购的候选”；其余正价差归入“仅有挂价差”。持续观察挂价、库存和求购变化；近 7/30 天实际销量与预计售出天数在没有可信成交记录时显示未知。库存减少、撤单和卖家累计成功交易数不会被当成此商品销量。</p>
+        <p><strong>匹配的限度：</strong>官方名称一致属于名称核对；杉果未提供 Steam 标识时不会宣称完成激活包核验。版本冲突、多个商品结果、DLC 或合集不会仅按相似度通过；确认关系绑定两个具体商品编号，商品信息变化后需重新确认。求购随时可能撤销，向求购者出售也可能需要等待对方兑换；实际激活区域与兑现仍需核实。</p>
+      </div>
+      <form id="scan-form" class="scan-form">
+        <label>关键词 <input id="keyword" maxlength="80" placeholder="留空扫描史低商品"></label>
+        <label>每类页数 <input id="pages" type="number" min="1" value="1"></label>
+        <button type="submit">开始扫描</button><button id="cancel-scan" type="button" class="ghost">取消</button>
+      </form>
+      <div class="progress"><div id="progress-stage">尚未扫描</div><div id="progress-counts"></div></div>
+      <div id="notice" role="status"></div>
+    </section>
+    <section class="panel" id="candidates">
+      <div class="panel-head"><div><div class="eyebrow">CANDIDATES</div><h2>扫描结果</h2></div><button id="refresh" class="ghost" type="button">刷新</button></div>
+      <div class="candidate-controls"><label>查看<select id="result-filter"><option value="opportunity">有求购的候选</option><option value="price_only">仅有挂价差</option><option value="all">全部结果</option><option value="needs_review">名称或内容待核对</option><option value="low_margin">利润不足</option><option value="unavailable">无报价或采集错误</option></select></label><span class="quiet" id="result-count"></span></div>
+      <p class="quiet">金额按单件计算。挂价利润假设按建议价格卖出；求购利润按当前最高有效求购报价计算，两者均扣卖出费和提现费。收益率 = 对应利润 ÷ 进货成本 × 100%。没有求购不等于没有成交；未知销量不会写成 0。</p>
+      <div class="table-wrap"><table class="candidate-table"><thead><tr><th>杉果商品</th><th>进货成本</th><th>SteamPy 对应商品 / 挂价</th><th>买方需求与趋势</th><th>按挂价利润（元/件）</th><th>挂价收益率</th><th>判定与名称依据</th><th>操作</th></tr></thead><tbody id="results"><tr><td colspan="8" class="empty">暂无扫描结果</td></tr></tbody></table></div>
+      <details class="order-ledger" id="product-mapping-list"><summary>已确认的商品对应关系</summary><p class="quiet">每条关系只适用于这两个商品编号。不会修改历史订单、进货数量或已发生的收入。</p><div class="table-wrap"><table><thead><tr><th>杉果商品 / 编号</th><th>SteamPy 商品 / 编号</th><th>确认时间 / 备注</th><th>操作</th></tr></thead><tbody id="product-mapping-rows"><tr><td colspan="4">暂无确认关系</td></tr></tbody></table></div></details>
+    </section>
+    <section class="panel">
+      <div id="turnover" class="order-ledger">
+        <div class="panel-head"><div><div class="eyebrow">OUR SALES &amp; CAPITAL TURNOVER</div><h3>我们自己的销售与资金周转</h3></div><span class="quiet" id="turnover-as-of">正在读取进货样本…</span></div>
+        <div class="metrics" aria-label="自己的销售周转">
+          <div class="metric"><span>已售件持货中位数</span><strong id="turnover-median">—</strong><small>购入到成交；含上架前时间</small></div>
+          <div class="metric"><span>购入后 7 天内配对成交</span><strong id="turnover-7d">—</strong><small id="turnover-7d-sample">只统计已买满 7 天的整批进货</small></div>
+          <div class="metric"><span>购入后 30 天内配对成交</span><strong id="turnover-30d">—</strong><small id="turnover-30d-sample">未配对件仍计入分母</small></div>
+          <div class="metric"><span>持有超过 30 天仍未配对</span><strong id="turnover-old">—</strong><small id="turnover-old-cost">对应进货成本单列</small></div>
+        </div>
+        <p class="quiet" id="turnover-note"></p><div id="turnover-week-chart"></div>
+        <p class="quiet">最近 12 周我们自己的已配对成交件数；本周观察未满一周，不能直接和完整周比较。</p>
+        <details><summary>查看所有商品的历史周转</summary><div class="table-wrap turnover-table-wrap"><table><thead><tr><th>进货商品</th><th>买入 / 已售 / 未配对</th><th>已售件持货中位数</th><th>7 天内配对</th><th>30 天内配对</th><th>最近一次成交</th><th>未配对持货 / 成本</th><th>平台库存记录至成交</th></tr></thead><tbody id="turnover-rows"><tr><td colspan="8" class="empty">尚无完整进货快照</td></tr></tbody></table></div></details>
+      </div>
+      <div class="panel-head"><div><div class="eyebrow">CASH CYCLE</div><h2>可选：逐笔交易记账</h2></div><span class="quiet">从扫描结果点“记录买入”开始跟踪；不保存激活码</span></div>
+      <div class="table-wrap"><table><thead><tr><th>商品</th><th>状态</th><th>实际买入</th><th>挂单 / 成交</th><th>实际回款</th><th>操作</th></tr></thead><tbody id="trades"><tr><td colspan="6" class="empty">暂无交易记录</td></tr></tbody></table></div>
+    </section>
+  </main>
+  <dialog id="market-trend-dialog"><h2 id="market-trend-title">市场需求与价格趋势</h2><p id="market-trend-summary"></p><div id="market-trend-chart"></div><p class="quiet">绿色：最低挂价；黄色：最高有效求购价。时间按实际观察记录。库存、求购单减少可能是撤单，不能视为成交。</p><div class="table-wrap"><table><thead><tr><th>观察时间</th><th>最低挂价</th><th>最高求购价</th><th>在售库存</th><th>有效求购单</th></tr></thead><tbody id="market-trend-rows"></tbody></table></div><p id="market-sales-evidence" class="product-info"></p><div class="dialog-actions"><button id="market-trend-close" type="button" class="ghost">关闭</button></div></dialog>
+  <dialog id="entry-dialog"><form id="entry-form"><h2 id="dialog-title">记录资金动作</h2><p id="dialog-subtitle"></p>
+    <label id="event-label">动作<select id="entry-event"></select></label>
+    <label>金额（人民币）<input id="entry-amount" type="number" min="0" step="0.01" required></label>
+    <label id="fee-label">平台费用（人民币）<input id="entry-fee" type="number" min="0" step="0.01" value="0"></label>
+    <label>订单或流水编号（可选）<input id="entry-reference" maxlength="120"></label>
+    <div class="dialog-actions"><button id="dialog-cancel" type="button" class="ghost">取消</button><button type="submit">保存记录</button></div>
+  </form></dialog>
+  <dialog id="bank-dialog"><form id="bank-form"><h2>核对银行到账</h2><p id="bank-subtitle">请以银行流水为准。</p>
+    <label>银行实际到账金额（人民币）<input id="bank-amount" type="number" min="0.01" step="0.01" required></label>
+    <label>到账日期<input id="bank-date" type="date" required></label>
+    <label>核对备注（可选，不填卡号）<input id="bank-note" maxlength="120"></label>
+    <div class="dialog-actions"><button id="bank-cancel" type="button" class="ghost">取消</button><button type="submit">保存到账核对</button></div>
+  </form></dialog>
+  <dialog id="product-dialog"><form id="product-form"><h2>核对对应商品</h2><p>核对版本、包含内容和激活限制后保存对应关系。后续扫描会重新取价，商品信息变化时重新确认。</p>
+    <div class="product-compare"><div id="product-offer"></div><div><label>SteamPy 候选商品<select id="product-choice"></select></label><div id="product-market"></div></div></div>
+    <p id="product-conflict" class="coverage-alert" hidden></p>
+    <label>核对依据或备注（可选）<input id="product-note" maxlength="300" placeholder="例如：两边页面说明包含相同内容"></label>
+    <label class="product-check"><input id="product-confirmed" type="checkbox" required>已查看两边商品页，确认是同一版本、相同内容，激活范围符合要求</label>
+    <p id="product-feedback" role="status"></p>
+    <div class="dialog-actions"><button id="product-cancel" type="button" class="ghost">取消</button><button id="product-save" type="submit">保存对应关系</button></div>
+  </form></dialog>
+  <dialog id="product-evidence-dialog"><h2>本次扫描的匹配依据</h2><p id="product-evidence-method"></p><div class="product-compare"><div id="product-evidence-offer"></div><div id="product-evidence-market"></div></div><p id="product-evidence-limit" class="product-info"></p><div class="dialog-actions"><button id="product-evidence-review" type="button" hidden>核对候选商品</button><button id="product-evidence-close" type="button" class="ghost">关闭</button></div></dialog>
+</body>
+</html>

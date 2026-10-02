@@ -1,0 +1,234 @@
+{
+  "observed_date": "2026-10-02",
+  "source": "whitelisted public product identity fields; no account or key data",
+  "products": [
+    {
+      "offer_title": "世界拉力锦标赛9 豪华版 （Steam版）",
+      "offer_cost": "14.31",
+      "offer": {
+        "platform": "sonkwo",
+        "product_id": "15585",
+        "names": [
+          "世界拉力锦标赛9 豪华版 （Steam版）",
+          "WRC 9 Edition Deluxe FIA World Rally Championship (Steam)"
+        ],
+        "url": "https://www.sonkwo.hk/sku/15585",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": null,
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": "4625",
+        "fingerprint": "4e4c64520d18a7c6cc7791dd6b079059e00d1d4e94c91f394ff88ffdbb78e0bb",
+        "editions": [
+          "deluxe"
+        ]
+      },
+      "market": {
+        "platform": "steampy",
+        "product_id": "553058254410747904",
+        "names": [
+          "WRC 9 Edition Deluxe FIA World Rally Championship"
+        ],
+        "url": "https://steampy.com/cdkDetail?name=cn&gameId=553058254410747904",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": "1267540",
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": null,
+        "fingerprint": "55778ebb6b0ce15da90ae8f4e308a169debcdd58a378a8eb7458f27fa4c038c8",
+        "editions": [
+          "deluxe"
+        ]
+      },
+      "expected_offer_name": "WRC 9 Edition Deluxe FIA World Rally Championship (Steam)",
+      "expected_market_name": "WRC 9 Edition Deluxe FIA World Rally Championship"
+    },
+    {
+      "offer_title": "派对克星",
+      "offer_cost": "5.00",
+      "offer": {
+        "platform": "sonkwo",
+        "product_id": "3603",
+        "names": [
+          "派对克星",
+          "Party Hard"
+        ],
+        "url": "https://www.sonkwo.hk/sku/3603",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": null,
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": "2384",
+        "fingerprint": "c51d22977d34218aa52899569875b82f650a31e833c40cd3274feecc2b0b4a53",
+        "editions": [
+          "standard"
+        ]
+      },
+      "market": {
+        "platform": "steampy",
+        "product_id": "262116710402756608",
+        "names": [
+          "疯狂派对",
+          "Party Hard"
+        ],
+        "url": "https://steampy.com/cdkDetail?name=cn&gameId=262116710402756608",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": "356570",
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": null,
+        "fingerprint": "76ee16b92695eec44ce78e03be125753ce6a4ba5d7111dd49b19f7e7b507fd6a",
+        "editions": [
+          "standard"
+        ]
+      },
+      "expected_offer_name": "Party Hard",
+      "expected_market_name": "Party Hard"
+    },
+    {
+      "offer_title": "TOEM: 照片冒险",
+      "offer_cost": "7.60",
+      "offer": {
+        "platform": "sonkwo",
+        "product_id": "106163",
+        "names": [
+          "TOEM: 照片冒险",
+          "TOEM"
+        ],
+        "url": "https://www.sonkwo.hk/sku/106163",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": null,
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": "9806",
+        "fingerprint": "8ad84504b0db2f445447192fbad256bcfefc1f0135093dbd17e5dd176d211bde",
+        "editions": [
+          "standard"
+        ]
+      },
+      "market": {
+        "platform": "steampy",
+        "product_id": "451475015934676992",
+        "names": [
+          "TOEM 摄影冒险",
+          "TOEM"
+        ],
+        "url": "https://steampy.com/cdkDetail?name=cn&gameId=451475015934676992",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": "1307580",
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": null,
+        "fingerprint": "2958c19ed5d2106a109e0504bef9867f4da39f43824f762294dd99097e0cc021",
+        "editions": [
+          "standard"
+        ]
+      },
+      "expected_offer_name": "TOEM",
+      "expected_market_name": "TOEM"
+    },
+    {
+      "offer_title": "太阳帝国的原罪2 高级版",
+      "offer_cost": "169.00",
+      "offer": {
+        "platform": "sonkwo",
+        "product_id": "29411",
+        "names": [
+          "太阳帝国的原罪2 高级版",
+          "Sins of a Solar Empire II - Premium Edition"
+        ],
+        "url": "https://www.sonkwo.hk/sku/29411",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": null,
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": "7996",
+        "fingerprint": "b14dcb3f74bb5ec202193b831801a3dfc109a09108c9c18e88f8cb2d5e48627c",
+        "editions": [
+          "premium"
+        ]
+      },
+      "market": {
+        "platform": "steampy",
+        "product_id": "836714234845859840",
+        "names": [
+          "Sins of a Solar Empire II Premium Edition"
+        ],
+        "url": "https://steampy.com/cdkDetail?name=cn&gameId=836714234845859840",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": "1575940",
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": null,
+        "fingerprint": "c6189887bfdaf9cf0f9dddd93056ff1b789543aa6b5c5fdca1cffe4ffba2350f",
+        "editions": [
+          "premium"
+        ]
+      },
+      "expected_offer_name": "Sins of a Solar Empire II - Premium Edition",
+      "expected_market_name": "Sins of a Solar Empire II Premium Edition"
+    },
+    {
+      "offer_title": "底特律：化身为人",
+      "offer_cost": "13.60",
+      "offer": {
+        "platform": "sonkwo",
+        "product_id": "109421",
+        "names": [
+          "底特律：化身为人",
+          "Detroit: Become Human"
+        ],
+        "url": "https://www.sonkwo.hk/sku/109421",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": null,
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": "10747",
+        "fingerprint": "4acc2d3ce6bd973f142488da60261725e85b2105c56f48eb2f723e3bbd11c9db",
+        "editions": [
+          "standard"
+        ]
+      },
+      "market": {
+        "platform": "steampy",
+        "product_id": "285987892147261440",
+        "names": [
+          "底特律：变人",
+          "Detroit: Become Human"
+        ],
+        "url": "https://steampy.com/cdkDetail?name=cn&gameId=285987892147261440",
+        "content_type": "base",
+        "market_region": "cn",
+        "steam_app_id": "1222140",
+        "steam_package_id": null,
+        "detail_checked": true,
+        "detail_issue": null,
+        "parent_product_id": null,
+        "fingerprint": "cfe1546664dafde974697eda36d41f4ea81d5c48530a91c962a78f7c13443439",
+        "editions": [
+          "standard"
+        ]
+      },
+      "expected_offer_name": "Detroit: Become Human",
+      "expected_market_name": "Detroit: Become Human"
+    }
+  ]
+}

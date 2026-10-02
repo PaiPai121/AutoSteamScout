@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>账号登录画面 · AutoSteamScout</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/auth.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div><div class="eyebrow">AUTO STEAM SCOUT</div><h1>账号登录画面</h1></div>
+    <a href="/auth">刷新登录画面</a>
+  </header>
+  <main>
+    <section class="intro">
+      <div><h2>在网页完成账号登录</h2><p>点击对应平台的“开始登录”，按页面提示填写手机号与短信验证码。若出现拼图，直接在下方实时画面中拖动滑块；验证通过后网页会进入下一步。</p></div>
+    </section>
+    <div class="auth-grid">
+      <section class="panel auth-panel" data-platform="sonkwo">
+        <div class="panel-head"><div><div class="eyebrow">SONKWO</div><h2>杉果</h2></div><div class="auth-actions"><button class="ghost" type="button" id="sonkwo-zoom">原始大小</button><button type="button" id="sonkwo-continue" hidden>识别卡住？继续输入验证码</button><button class="ghost" type="button" id="sonkwo-cancel" hidden>取消登录</button><span class="pill" id="sonkwo-state">待命</span></div></div>
+        <div class="auth-login-controls"><button type="button" id="sonkwo-start">开始登录</button><label><input type="checkbox" id="sonkwo-reuse"> 已有未过期验证码，不重新发送</label></div>
+        <form class="auth-input-form" id="sonkwo-phone-form" hidden><label for="sonkwo-phone-input">手机号</label><input id="sonkwo-phone-input" type="tel" inputmode="numeric" autocomplete="tel" pattern="1[0-9]{10}" maxlength="11" required><button type="submit">填写手机号并获取验证码</button></form>
+        <form class="auth-input-form" id="sonkwo-code-form" hidden><label for="sonkwo-code-input">短信验证码</label><input id="sonkwo-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,8}" maxlength="8" required><button type="submit">提交验证码并登录</button></form>
+        <p class="auth-feedback" id="sonkwo-feedback" role="status"></p>
+        <p class="quiet" id="sonkwo-message">正在读取状态…</p>
+        <p class="auth-confirmation" id="sonkwo-phone" hidden>手机号已填入浏览器。</p>
+        <p class="auth-instruction" id="sonkwo-challenge" hidden>在下方画面中找到中间的白色拼图弹窗。按住弹窗底部左侧带 » 的白色滑块，保持按住并向右拖，拼图对齐后松开。程序会自动识别；若弹窗消失 10 秒后仍未显示验证码输入框，使用上方的备用继续按钮。</p>
+        <p class="auth-stale" id="sonkwo-stale" hidden>这是上次登录留下的画面。点击“开始登录”可以重新检查会话。</p>
+        <p class="quiet" id="sonkwo-time"></p>
+        <div class="auth-frame"><img id="sonkwo-frame" alt="杉果无头浏览器画面" draggable="false" hidden><span id="sonkwo-empty">尚无画面。点击“开始登录”后会自动显示。</span></div>
+      </section>
+      <section class="panel auth-panel" data-platform="steampy">
+        <div class="panel-head"><div><div class="eyebrow">STEAMPY</div><h2>SteamPy</h2></div><div class="auth-actions"><button class="ghost" type="button" id="steampy-zoom">原始大小</button><button type="button" id="steampy-continue" hidden>识别卡住？继续输入验证码</button><button class="ghost" type="button" id="steampy-cancel" hidden>取消登录</button><span class="pill" id="steampy-state">待命</span></div></div>
+        <div class="auth-login-controls"><button type="button" id="steampy-start">开始登录</button><label><input type="checkbox" id="steampy-reuse"> 已有未过期验证码，不重新发送</label></div>
+        <form class="auth-input-form" id="steampy-phone-form" hidden><label for="steampy-phone-input">手机号</label><input id="steampy-phone-input" type="tel" inputmode="numeric" autocomplete="tel" pattern="1[0-9]{10}" maxlength="11" required><button type="submit">填写手机号并获取验证码</button></form>
+        <form class="auth-input-form" id="steampy-code-form" hidden><label for="steampy-code-input">短信验证码</label><input id="steampy-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,8}" maxlength="8" required><button type="submit">提交验证码并登录</button></form>
+        <p class="auth-feedback" id="steampy-feedback" role="status"></p>
+        <p class="quiet" id="steampy-message">正在读取状态…</p>
+        <p class="auth-confirmation" id="steampy-phone" hidden>手机号已填入浏览器。</p>
+        <p class="auth-instruction" id="steampy-challenge" hidden>按住拼图弹窗底部左侧的白色滑块，向右拖到缺口后松开。若画面太小，点“原始大小”。</p>
+        <p class="auth-stale" id="steampy-stale" hidden>这是上次登录留下的画面。点击“开始登录”可以重新检查会话。</p>
+        <p class="quiet" id="steampy-time"></p>
+        <div class="auth-frame"><img id="steampy-frame" alt="SteamPy 无头浏览器画面" draggable="false" hidden><span id="steampy-empty">尚无画面。点击“开始登录”后会自动显示。</span></div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

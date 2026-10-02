@@ -1,0 +1,864 @@
+{
+  "checked_at": "2026-10-02T05:57:54+00:00",
+  "source": "SteamPy official listSale and wantKeyOrder/showGame, read-only 2026-10-02; listing/request identifiers replaced in tests",
+  "products": [
+    {
+      "title": "秘境之柱",
+      "product_id": "267422945108824064",
+      "sale_total": 15,
+      "sale_rows": [
+        {
+          "keyPrice": 3.6,
+          "sold": 9,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 3.7,
+          "sold": 85,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.7,
+          "sold": 10,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.7,
+          "sold": 10,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.8,
+          "sold": 233,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.8,
+          "sold": 107,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.8,
+          "sold": 112,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 2,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.99,
+          "sold": 23649,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.99,
+          "sold": 5638,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 2,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 5.0,
+          "sold": 15,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 5.9,
+          "sold": 12272,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 5.9,
+          "sold": 12272,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 6.66,
+          "sold": 23649,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 6.68,
+          "sold": 23649,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 7.0,
+          "sold": 398,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        }
+      ],
+      "want_total": 0,
+      "want_rows": [],
+      "names": [
+        "Mystic Pillars"
+      ]
+    },
+    {
+      "title": "出马",
+      "product_id": "9000940036301905489920",
+      "sale_total": 17,
+      "sale_rows": [
+        {
+          "keyPrice": 8.45,
+          "sold": 36,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 8.5,
+          "sold": 35,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 8.58,
+          "sold": 1069,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 8.58,
+          "sold": 31,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 8.59,
+          "sold": 208,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 2,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 11.98,
+          "sold": 59,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 11.99,
+          "sold": 1333,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 12.0,
+          "sold": 3288,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 14.69,
+          "sold": 14530,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 15.99,
+          "sold": 263,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 20.0,
+          "sold": 137,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 2,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 22.5,
+          "sold": 55485,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 23.7,
+          "sold": 3514,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 14,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 24.5,
+          "sold": 13733,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 25.9,
+          "sold": 13733,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 25.95,
+          "sold": 13733,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 25.99,
+          "sold": 13733,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        }
+      ],
+      "want_total": 0,
+      "want_rows": [],
+      "names": [
+        "Spirit Possession"
+      ]
+    },
+    {
+      "title": "病态：艾尔之王",
+      "product_id": "803882575348109312",
+      "sale_total": 8,
+      "sale_rows": [
+        {
+          "keyPrice": 9.99,
+          "sold": 37,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 10.0,
+          "sold": 20,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 14.43,
+          "sold": 9,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 15.0,
+          "sold": 3,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 15.79,
+          "sold": 85,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 28.85,
+          "sold": 5638,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 28.9,
+          "sold": 1155,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 40.0,
+          "sold": 16950,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 10,
+          "osFlag": "0"
+        }
+      ],
+      "want_total": 0,
+      "want_rows": [],
+      "names": [
+        "Morbid: The Lords of Ire"
+      ]
+    },
+    {
+      "title": "澳网公开赛2",
+      "product_id": "267406382683131904",
+      "sale_total": 12,
+      "sale_rows": [
+        {
+          "keyPrice": 20.9,
+          "sold": 756,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 2,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 20.99,
+          "sold": 186,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 21.0,
+          "sold": 8,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 21.0,
+          "sold": 90,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 21.5,
+          "sold": 890,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 25.0,
+          "sold": 3116,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 25.0,
+          "sold": 3116,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 27.0,
+          "sold": 3116,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 28.69,
+          "sold": 85,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 28.7,
+          "sold": 3116,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 28.8,
+          "sold": 29518,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 6,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 30.0,
+          "sold": 3116,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 2,
+          "osFlag": "0"
+        }
+      ],
+      "want_total": 1,
+      "want_rows": [
+        {
+          "createTime": "2026-10-02 05:31:51",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "267406382683131904",
+          "txPrice": 15.0,
+          "gameName": "AO Tennis 2",
+          "gameNameCn": null
+        }
+      ],
+      "names": [
+        "AO Tennis 2"
+      ]
+    },
+    {
+      "title": "当火车鸣笛三秒",
+      "product_id": "452274374066573312",
+      "sale_total": 9,
+      "sale_rows": [
+        {
+          "keyPrice": 3.8,
+          "sold": 36,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.1,
+          "sold": 4,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.2,
+          "sold": 63,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 3,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.7,
+          "sold": 15,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 4.99,
+          "sold": 85,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 5.6,
+          "sold": 0,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 5.6,
+          "sold": 4,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 2,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 5.66,
+          "sold": 0,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 5.68,
+          "sold": 2763,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 2,
+          "osFlag": "0"
+        }
+      ],
+      "want_total": 0,
+      "want_rows": [],
+      "names": [
+        "当火车鸣笛三秒"
+      ]
+    },
+    {
+      "title": "底特律：化身为人",
+      "product_id": "285987892147261440",
+      "sale_total": 672,
+      "sale_rows": [
+        {
+          "keyPrice": 12.22,
+          "sold": 95,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 12.22,
+          "sold": 132,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 12.41,
+          "sold": 11965,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.0,
+          "sold": 14343,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.3,
+          "sold": 1531,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.35,
+          "sold": 37,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.4,
+          "sold": 3630,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.5,
+          "sold": 66,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.68,
+          "sold": 2383,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.74,
+          "sold": 24,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.75,
+          "sold": 18943,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 6,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.76,
+          "sold": 590,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.76,
+          "sold": 591,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.76,
+          "sold": 625,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.76,
+          "sold": 625,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.77,
+          "sold": 589,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.79,
+          "sold": 11337,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.8,
+          "sold": 5526,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.87,
+          "sold": 575,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        },
+        {
+          "keyPrice": 13.88,
+          "sold": 4788,
+          "handCost": 1,
+          "ccy": "CNY",
+          "stock": 1,
+          "osFlag": "0"
+        }
+      ],
+      "want_total": 14,
+      "want_rows": [
+        {
+          "createTime": "2026-10-01 21:33:15",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 11.0,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-10-02 10:08:03",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 10.5,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-10-02 12:54:44",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 10.5,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-10-02 03:01:19",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 10.1,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-09-27 21:33:40",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 10.0,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-10-01 14:43:18",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 10.0,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-10-01 18:57:37",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 10.0,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-09-28 14:14:09",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 9.9,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-09-27 18:45:40",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 9.6,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-10-02 01:59:16",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 9.0,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-09-27 01:24:35",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 8.88,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-09-27 23:29:21",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 8.88,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-10-02 03:26:15",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 8.8,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        },
+        {
+          "createTime": "2026-09-27 13:22:02",
+          "delFlag": 0,
+          "txStatus": "02",
+          "gameId": "285987892147261440",
+          "txPrice": 8.0,
+          "gameName": "Detroit: Become Human",
+          "gameNameCn": "底特律：变人"
+        }
+      ],
+      "names": [
+        "底特律：变人",
+        "Detroit: Become Human"
+      ]
+    }
+  ]
+}

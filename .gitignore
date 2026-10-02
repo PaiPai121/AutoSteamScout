@@ -82,6 +82,10 @@ temp/
 # Browser data directories
 Sonkwo_Scout/sonkwo_data/
 SteamPY_Scout/steampy_data/
+Sonkwo_Scout/sonkwo_data_bak/
+SteamPY_Scout/debug_*.png
+.autoscout/
+autoscout.sqlite3*
 
 # Log files
 *.log
